@@ -1,0 +1,150 @@
+/*
+ * Ficheiro: js/common/supabaseRealtime.js
+ * Substitui Socket.IO por Supabase Realtime Broadcast.
+ *
+ * Requer:
+ * - @supabase/supabase-js via CDN
+ * - window.TRAGO_SUPABASE_URL
+ * - window.TRAGO_SUPABASE_ANON_KEY
+ */
+(function () {
+    const ADMIN_CHANNEL = 'admin_room';
+
+    function hasConfig() {
+        return Boolean(window.supabase && window.TRAGO_SUPABASE_URL && window.TRAGO_SUPABASE_ANON_KEY);
+    }
+
+    function createClient() {
+        if (!hasConfig()) {
+            console.warn('[TragoRealtime] Supabase Realtime não configurado. Defina TRAGO_SUPABASE_URL e TRAGO_SUPABASE_ANON_KEY.');
+            return null;
+        }
+
+        return window.supabase.createClient(
+            window.TRAGO_SUPABASE_URL,
+            window.TRAGO_SUPABASE_ANON_KEY,
+            {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false
+                },
+                realtime: {
+                    params: {
+                        eventsPerSecond: 20
+                    }
+                }
+            }
+        );
+    }
+
+    function parseJwt(token) {
+        try {
+            const payload = token.split('.')[1];
+            const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+            return JSON.parse(decodeURIComponent(atob(normalized).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join('')));
+        } catch (error) {
+            console.warn('[TragoRealtime] Não foi possível ler o JWT localmente:', error);
+            return null;
+        }
+    }
+
+    function connectAdminRealtime({ onEvent } = {}) {
+        const client = createClient();
+        if (!client) return null;
+
+        const channel = client
+            .channel(ADMIN_CHANNEL, { config: { broadcast: { self: false } } })
+            .on('broadcast', { event: '*' }, function (message) {
+                if (typeof onEvent === 'function') {
+                    onEvent(message.event, message.payload || {});
+                }
+            })
+            .subscribe(function (status) {
+                console.log('[TragoRealtime] Admin channel:', status);
+            });
+
+        return {
+            client,
+            channel,
+            unsubscribe: function () {
+                return client.removeChannel(channel);
+            }
+        };
+    }
+
+    function connectDriverRealtime({ token, onEvent, onReady } = {}) {
+        const client = createClient();
+        if (!client) return null;
+
+        const decoded = parseJwt(token || '');
+        const userId = decoded && decoded.user && decoded.user.id;
+
+        if (!userId) {
+            console.warn('[TragoRealtime] Não foi possível determinar o ID do motorista pelo token.');
+            return null;
+        }
+
+        const channel = client
+            .channel(`driver:${userId}`, {
+                config: {
+                    broadcast: { self: false },
+                    presence: { key: userId }
+                }
+            })
+            .on('broadcast', { event: '*' }, function (message) {
+                if (typeof onEvent === 'function') {
+                    onEvent(message.event, message.payload || {});
+                }
+            })
+            .subscribe(function (status) {
+                console.log('[TragoRealtime] Driver channel:', status);
+                if (status === 'SUBSCRIBED') {
+                    channel.track({ user_id: userId, online_at: new Date().toISOString() });
+                    if (typeof onReady === 'function') onReady();
+                }
+            });
+
+        return {
+            client,
+            channel,
+            userId,
+            unsubscribe: function () {
+                return client.removeChannel(channel);
+            }
+        };
+    }
+
+    async function postRealtimeEndpoint(token, endpoint, payload) {
+        const response = await fetch(`${API_URL}/api/realtime/${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload || {})
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(function () { return {}; });
+            throw new Error(data.message || 'Falha na comunicação Realtime.');
+        }
+
+        return response.json().catch(function () { return {}; });
+    }
+
+    window.TragoRealtime = {
+        connectAdminRealtime,
+        connectDriverRealtime,
+        sendDriverLocation: function (token, payload) {
+            return postRealtimeEndpoint(token, 'driver-location', payload);
+        },
+        setDriverOnline: function (token) {
+            return postRealtimeEndpoint(token, 'driver-online', {});
+        },
+        setDriverOffline: function (token) {
+            return postRealtimeEndpoint(token, 'driver-offline', {});
+        }
+    };
+})();

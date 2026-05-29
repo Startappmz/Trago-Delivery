@@ -1,0 +1,487 @@
+/* ============================================
+   Trago Delivery - Driver Panel Styles
+   Based on TemplateMo Glass Admin
+   VERSÃO FINAL - CONSISTÊNCIA TOTAL
+============================================ */
+
+/* ============================================
+   DRIVER BODY
+============================================ */
+.motorista-body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-dark);
+}
+
+/* ============================================
+   DRIVER HEADER
+============================================ */
+.motorista-header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.motorista-logo {
+    max-width: 120px;
+    height: auto;
+}
+
+.motorista-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.motorista-profile span {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+#driver-name-header {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.btn-logout {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-logout:hover {
+    background: var(--glass-hover);
+    border-color: var(--emerald-light);
+    color: var(--text-primary);
+}
+
+#driver-logout.btn-logout:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+/* ============================================
+   MOBILE MENU (DRIVER)
+============================================ */
+.btn-mobile-driver-menu {
+    display: none;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-mobile-driver-menu:hover {
+    background: var(--glass-hover);
+    border-color: var(--emerald-light);
+}
+
+.driver-mobile-menu {
+    position: fixed;
+    top: 70px;
+    right: 16px;
+    width: 220px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 8px;
+    z-index: 1000;
+    opacity: 0;
+    transform: scale(0.9) translateY(-10px);
+    transition: all var(--transition-normal);
+    pointer-events: none;
+    box-shadow: 0 25px 50px -12px var(--glass-shadow);
+}
+
+.driver-mobile-menu.open {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+}
+
+.driver-mobile-menu ul {
+    list-style: none;
+}
+
+.driver-mobile-menu li {
+    margin-bottom: 2px;
+}
+
+.driver-mobile-menu li a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 8px;
+    transition: all var(--transition-fast);
+    font-size: 14px;
+}
+
+.driver-mobile-menu li a i {
+    width: 18px;
+    font-size: 1rem;
+}
+
+.driver-mobile-menu li a:hover {
+    background: var(--glass-hover);
+    color: var(--text-primary);
+}
+
+.driver-mobile-menu li:last-child a {
+    color: var(--danger);
+}
+
+.driver-mobile-menu li:last-child a:hover {
+    background: rgba(220, 38, 38, 0.15);
+}
+
+/* ============================================
+   MAIN CONTENT (DRIVER)
+============================================ */
+.motorista-main {
+    padding: 1.5rem;
+    max-width: 900px;
+    margin: 1.5rem auto;
+    width: 100%;
+}
+
+.content-section {
+    margin-bottom: 1.5rem;
+}
+
+.content-section .glass-card {
+    padding: 1.5rem;
+}
+
+/* ============================================
+   ENTREGA CARDS
+============================================ */
+.entrega-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid var(--emerald);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.entrega-card:hover {
+    background: var(--glass-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 25px 50px -12px var(--glass-shadow);
+    border-color: var(--emerald-light);
+}
+
+.entrega-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.entrega-card-header span {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.entrega-card p {
+    margin-bottom: 0.4rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.ver-detalhes-btn {
+    display: inline-block;
+    margin-top: 0.75rem;
+    color: var(--emerald-light);
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: color var(--transition-fast);
+}
+
+.ver-detalhes-btn:hover {
+    color: var(--gold);
+}
+
+/* ============================================
+   DETALHES GRID
+============================================ */
+.detalhes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.25rem;
+    margin-top: 1.25rem;
+}
+
+/* ============================================
+   DETALHES ENTREGA
+============================================ */
+.btn-voltar {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 1.25rem;
+    transition: all var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.btn-voltar:hover {
+    color: var(--emerald-light);
+    transform: translateX(-3px);
+}
+
+.detalhes-bloco {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 0;
+}
+
+.detalhes-bloco h3 {
+    color: var(--emerald-light);
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.detalhes-bloco h3 i {
+    font-size: 1rem;
+}
+
+.detalhes-bloco p {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.detalhes-bloco p:last-child {
+    margin-bottom: 0;
+}
+
+.detalhes-bloco p strong {
+    color: var(--text-primary);
+}
+
+/* ============================================
+   BOTÃO MAPA
+============================================ */
+.btn-mapa {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: linear-gradient(135deg, var(--emerald), var(--emerald-light));
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    margin-top: 0.75rem;
+    transition: all var(--transition-fast);
+    font-size: 0.85rem;
+    box-shadow: 0 4px 12px rgba(141, 197, 67, 0.3);
+}
+
+.btn-mapa:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(141, 197, 67, 0.4);
+}
+
+/* ============================================
+   CÓDIGO DE FINALIZAÇÃO
+============================================ */
+#codigo-finalizacao {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 0.3rem;
+    text-transform: uppercase;
+    background: var(--glass-bg);
+    border: 2px solid var(--glass-border);
+    padding: 0.75rem;
+    width: 100%;
+    max-width: 250px;
+    border-radius: 10px;
+    color: var(--text-primary);
+    transition: all var(--transition-fast);
+}
+
+#codigo-finalizacao:focus {
+    outline: none;
+    border-color: var(--emerald-light);
+    box-shadow: 0 0 20px rgba(167, 216, 107, 0.3);
+}
+
+/* ============================================
+   IMAGEM DA ENCOMENDA
+============================================ */
+.delivery-image-display {
+    text-align: center;
+}
+
+.delivery-image-display img {
+    max-width: 100%;
+    max-height: 250px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    object-fit: cover;
+}
+
+/* ============================================
+   BOTÃO INICIAR
+============================================ */
+.btn-iniciar {
+    background: linear-gradient(135deg, var(--emerald), var(--emerald-light));
+    color: white;
+    width: 100%;
+    font-size: 0.95rem;
+    padding: 0.75rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 12px rgba(141, 197, 67, 0.3);
+}
+
+.btn-iniciar:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(141, 197, 67, 0.4);
+}
+
+#entrega-status {
+    font-weight: 600;
+    color: var(--emerald-light);
+    font-size: 0.95rem;
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+
+.status-info {
+    font-weight: 500;
+    color: var(--emerald);
+    font-size: 0.95rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background: rgba(141, 197, 67, 0.1);
+    border-radius: 8px;
+}
+
+/* ============================================
+   CONFIG FORM
+============================================ */
+.config-form {
+    max-width: 600px;
+}
+
+.config-form .form-section {
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+/* ============================================
+   TABLE SECTION
+============================================ */
+.table-section {
+    margin-top: 2rem;
+}
+
+.table-section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+/* ============================================
+   RESPONSIVE (DRIVER)
+============================================ */
+@media (max-width: 992px) {
+    .motorista-header {
+        padding: 0.75rem 1rem;
+    }
+    
+    .motorista-profile {
+        display: none;
+    }
+    
+    .btn-mobile-driver-menu {
+        display: block;
+    }
+    
+    .motorista-main {
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .detalhes-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    #codigo-finalizacao {
+        font-size: 1.3rem;
+        letter-spacing: 0.2rem;
+    }
+    
+    .detalhes-bloco {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .btn-mapa {
+        width: 100%;
+        justify-content: center;
+    }
+}

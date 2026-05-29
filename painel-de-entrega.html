@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="pt-mz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Entrega - Trago Delivery</title>
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+    
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="global.css">
+    <link rel="stylesheet" href="driver.css">
+    <link rel="stylesheet" href="trago-system.css">
+    
+    <!-- Socket.io -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="motorista-body">
+    <!-- Animated Background -->
+    <div class="background"></div>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Header -->
+    <header class="motorista-header">
+        <img src="assets/logo.svg" alt="Logotipo Trago Delivery" class="motorista-logo">
+        
+        <div class="motorista-profile">
+            <span>Olá, <strong id="driver-name-header">Motorista</strong></span>
+            
+            <button class="btn-logout" id="driver-earnings" title="Meus Ganhos">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <span class="desktop-only">Ganhos</span>
+            </button>
+            
+            <button class="btn-logout" id="driver-settings" title="Configurações">
+                <i class="fas fa-cog"></i>
+                <span class="desktop-only">Configurações</span>
+            </button>
+            
+            <button class="btn-logout" id="driver-logout" title="Sair">
+                <i class="fas fa-sign-out-alt"></i>
+                <span class="desktop-only">Sair</span>
+            </button>
+        </div>
+        
+        <button class="btn-mobile-driver-menu" id="mobile-driver-menu-toggle">
+            <i class="fas fa-bars"></i>
+        </button>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="driver-mobile-menu" id="driver-mobile-nav">
+        <ul>
+            <li id="mobile-nav-ganhos"><a href="#"><i class="fas fa-file-invoice-dollar"></i> Meus Ganhos</a></li>
+            <li id="mobile-nav-config"><a href="#"><i class="fas fa-cog"></i> Configurações</a></li>
+            <li id="mobile-nav-logout"><a href="#"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <main class="motorista-main">
+        <!-- Lista de Entregas -->
+        <section id="lista-entregas" class="content-section">
+            <div class="glass-card">
+                <h2 class="section-title">
+                    <i class="fas fa-tasks"></i>
+                    Minhas Entregas Pendentes
+                </h2>
+                <div id="entregas-container">
+                    <!-- Os cards serão inseridos aqui pelo JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Detalhe da Entrega -->
+        <section id="detalhe-entrega" class="content-section hidden">
+            <div class="glass-card">
+                <button class="btn-voltar" id="btn-voltar-lista">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Voltar à Lista</span>
+                </button>
+                
+                <h2 class="section-title" id="detalhe-entrega-title">Detalhes do Pedido #123456</h2>
+                
+                <div class="detalhes-grid">
+                    <!-- Imagem -->
+                    <div class="detalhes-bloco delivery-image-display">
+                        <h3><i class="fas fa-image"></i> Imagem da Encomenda</h3>
+                        <img src="" alt="Imagem da Encomenda" id="encomenda-imagem" class="hidden">
+                        <p id="no-image-placeholder" class="hidden">Nenhuma imagem fornecida.</p>
+                    </div>
+
+                    <!-- Destinatário -->
+                    <div class="detalhes-bloco">
+                        <h3><i class="fas fa-user"></i> Destinatário</h3>
+                        <p id="detalhe-cliente-nome"><strong>Nome:</strong> ...</p>
+                        <p id="detalhe-cliente-telefone"><strong>Telefone:</strong> ...</p>
+                        <p id="detalhe-payment-method">
+                        <strong>Método de Pagamento:</strong> <span>...</span>
+                        </p>
+                    </div>
+
+                    <!-- Destino -->
+                    <div class="detalhes-bloco">
+                        <h3><i class="fas fa-map-marker-alt"></i> Destino</h3>
+                        <p id="detalhe-cliente-endereco"><strong>Endereço:</strong> ...</p>
+                        <p id="detalhe-cliente-coords" class="hidden">
+                            <strong>Coordenadas:</strong> <span>...</span>
+                        </p>
+                        <a href="#" target="_blank" class="btn-mapa hidden" id="btn-google-maps">
+                            <i class="fas fa-map-location-dot"></i>
+                            <span>Abrir no Google Maps</span>
+                        </a>
+                    </div>
+
+                    <!-- Ações -->
+                    <div class="detalhes-bloco">
+                        <h3><i class="fas fa-play-circle"></i> Ações</h3>
+                        
+                        <button class="btn btn-primary btn-iniciar" id="btn-iniciar-entrega">
+                            <i class="fas fa-play-circle"></i>
+                            <span>Iniciar Entrega</span>
+                        </button>
+                        
+                        <form id="form-finalizacao" class="hidden">
+                            <p id="entrega-status" class="status-info">Entrega em progresso...</p>
+                            
+                            <div class="form-group">
+                                <label for="codigo-finalizacao">Código de Verificação (5 dígitos)</label>
+                                <input type="text" id="codigo-finalizacao" maxlength="5" placeholder="ABC12" class="form-input">
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check-circle"></i>
+                                <span>Finalizar Entrega</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configurações -->
+        <section id="configuracoes-motorista" class="content-section hidden">
+            <div class="glass-card">
+                <button class="btn-voltar" id="btn-voltar-lista-config">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Voltar às Entregas</span>
+                </button>
+                
+                <h2 class="section-title">
+                    <i class="fas fa-cog"></i>
+                    Configurações da Conta
+                </h2>
+
+                <form id="form-change-password-driver" class="config-form">
+                    <div class="form-section">
+                        <h3>Alterar minha Senha</h3>
+                        <p class="form-note">Você será desconectado após alterar a senha.</p>
+                        
+                        <div class="form-group">
+                            <label for="driver-pass-antiga">Senha Antiga</label>
+                            <input type="password" id="driver-pass-antiga" class="form-input" required>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="driver-pass-nova">Nova Senha (mín. 6 caracteres)</label>
+                                <input type="password" id="driver-pass-nova" class="form-input" required minlength="6">
+                            </div>
+                            <div class="form-group">
+                                <label for="driver-pass-confirmar">Confirmar Nova Senha</label>
+                                <input type="password" id="driver-pass-confirmar" class="form-input" required minlength="6">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-key"></i>
+                            <span>Atualizar Senha</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Secção de Localização -->
+                <div class="form-section section-spaced">
+                    <h3><i class="fas fa-map-marker-alt"></i> Localização</h3>
+                    <p class="form-note">A localização é obrigatória para o funcionamento do sistema.</p>
+                    <button id="btn-reativar-localizacao" class="btn btn-secondary">
+                        <i class="fas fa-sync-alt"></i>
+                        Reativar Partilha de Localização
+                    </button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Meus Ganhos -->
+        <section id="meus-ganhos" class="content-section hidden">
+            <div class="glass-card">
+                <button class="btn-voltar" id="btn-voltar-lista-ganhos">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Voltar às Entregas</span>
+                </button>
+                
+                <h2 class="section-title">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Meus Ganhos (Este Mês)
+                </h2>
+                
+                <div class="stats-grid">
+                    <div class="glass-card stat-card">
+                        <div class="stat-info">
+                            <h3><i class="fas fa-dollar-sign"></i> Total Ganhos</h3>
+                            <div class="stat-value" id="driver-total-ganhos">...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass-card stat-card">
+                        <div class="stat-info">
+                            <h3><i class="fas fa-tasks"></i> Total Entregas</h3>
+                            <div class="stat-value" id="driver-total-entregas">...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass-card stat-card">
+                        <div class="stat-info">
+                            <h3><i class="fas fa-percent"></i> Minha Comissão</h3>
+                            <div class="stat-value" id="driver-commission-rate">... %</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-section">
+                    <h3>Extrato de Entregas Concluídas</h3>
+                    <div class="table-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>ID Pedido</th>
+                                    <th>Valor (MZN)</th>
+                                    <th>Meu Ganho (MZN)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="driver-earnings-table-body">
+                                <tr><td colspan="4">A carregar...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL DE PERMISSÃO DE LOCALIZAÇÃO - VERSÃO OBRIGATÓRIA -->
+    <div id="location-permission-modal" class="modal-backdrop">
+        <div class="modal-content location-modal">
+            <div class="modal-header">
+                <h3><i class="fas fa-map-marker-alt"></i> LOCALIZAÇÃO OBRIGATÓRIA</h3>
+                <!-- Botão de fechar removido propositadamente -->
+            </div>
+            <div class="modal-body location-modal-body">
+                <div class="location-icon">
+                    <i class="fas fa-location-dot"></i>
+                </div>
+                
+                <h4 class="location-title">
+                    A sua localização é necessária
+                </h4>
+                
+                <p class="location-copy">
+                    Para garantir a segurança das entregas e permitir o acompanhamento em tempo real pelo administrador, <strong>é obrigatório ativar a partilha da sua localização</strong>.
+                </p>
+                
+                <div class="privacy-panel">
+                    <p class="privacy-title">
+                        <i class="fas fa-shield-alt"></i>
+                        Compromisso de privacidade:
+                    </p>
+                    <p class="privacy-line">
+                        <i class="fas fa-check-circle"></i>
+                        Localização partilhada apenas durante o turno
+                    </p>
+                    <p class="privacy-line">
+                        <i class="fas fa-check-circle"></i>
+                        Dados protegidos e uso exclusivo interno
+                    </p>
+                    <p class="privacy-line">
+                        <i class="fas fa-check-circle"></i>
+                        Pode desativar ao terminar o turno
+                    </p>
+                </div>
+
+                <div class="location-warning">
+                    <p>
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Sem acesso à localização, não poderá receber ou realizar entregas.
+                    </p>
+                </div>
+
+                <div class="form-actions location-actions">
+                    <button id="allow-location-btn" class="btn btn-primary">
+                        <i class="fas fa-check-circle"></i>
+                        PERMITIR LOCALIZAÇÃO
+                    </button>
+                    <button id="deny-location-btn" class="btn btn-secondary">
+                        <i class="fas fa-times-circle"></i>
+                        NEGAR (não recomendado)
+                    </button>
+                </div>
+
+                <p id="location-permission-note" class="location-note">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    A localização é OBRIGATÓRIA. O sistema não funcionará sem ela.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="custom-alert-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-alert">
+            <div class="modal-header">
+                <h3 id="custom-alert-title"></h3>
+                <button class="modal-close-btn" id="btn-close-alert">×</button>
+            </div>
+            <div class="modal-body">
+                <p id="custom-alert-message"></p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="btn-ok-alert">OK</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts - ORDEM CORRETA -->
+    <script src="templatemo-glass-admin-script.js"></script>
+    <script src="js/common/supabaseConfig.js"></script>
+    <script src="js/common/api.js"></script>
+    <script src="js/common/auth.js"></script>
+    <script src="js/common/ui.js"></script>
+    <script src="js/common/supabaseRealtime.js"></script>
+    <script src="js/driver/driverTracking.js"></script>
+    <script src="js/driver/driver.js"></script>
+</body>
+</html>
