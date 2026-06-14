@@ -95,9 +95,13 @@ exports.createOrder = asyncHandler(async (req, res) => {
     client_phone1,
     client_phone2,
     address_text,
+    pickup_address_text,
     price,
+    service_price,
     lat,
     lng,
+    pickup_lat,
+    pickup_lng,
     clientId,
     autoAssign
   } = data;
@@ -134,8 +138,23 @@ exports.createOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // ===== COORDENADAS =====
+  // ===== COORDENADAS E PREÇO POR DISTÂNCIA =====
   const coordinates = normalizeCoordinates(lat, lng);
+  const pickupCoordinates = normalizeCoordinates(pickup_lat, pickup_lng);
+  const baseServicePrice = Number(service_price ?? price) || 0;
+
+  let routeQuote = {
+    distance_km: Number(data.route_distance_km) || 0,
+    duration_min: Number(data.route_duration_min) || null,
+    delivery_fee: Number(data.delivery_fee) || 0,
+    source: 'frontend'
+  };
+
+  if (pickupCoordinates && coordinates) {
+    routeQuote = await buildRouteQuote(pickupCoordinates, coordinates);
+  }
+
+  const totalOrderPrice = baseServicePrice + Number(routeQuote.delivery_fee || 0);
 
   let assignedDriverProfileId = null;
   let orderStatus = ORDER_STATUS.PENDING;
@@ -154,10 +173,17 @@ exports.createOrder = asyncHandler(async (req, res) => {
   // ===== CRIAÇÃO DO PEDIDO =====
   const order = await Order.create({
     service_type,
-    price: Number(price) || 0,
+    price: Number(totalOrderPrice) || 0,
+    service_price: Number(baseServicePrice) || 0,
+    delivery_fee: Number(routeQuote.delivery_fee) || 0,
+    route_distance_km: Number(routeQuote.distance_km) || 0,
+    route_duration_min: routeQuote.duration_min || null,
+    route_pricing_source: routeQuote.source || 'fallback',
     client_name,
     client_phone1,
     client_phone2,
+    pickup_address_text: pickup_address_text || '',
+    pickup_address_coords: pickupCoordinates,
     address_text,
     address_coords: coordinates,
     client: clientId || null,

@@ -268,13 +268,18 @@ function showServiceForm(serviceType) {
     showPage('form-nova-entrega', null, titles[serviceType] || 'Nova Entrega');
     
     // Prepara o formulário
-    document.getElementById('service-type').value = serviceType;
     removeImage(); // (ui.js)
     resetDeliveryForm();
+    document.getElementById('service-type').value = serviceType;
     loadClientsIntoDropdown(); // (adminApi.js)
     
     // Atraso para garantir que o elemento #map está visível antes de inicializar
-    setTimeout(initializeFormMap, 100); // (adminMap.js)
+    setTimeout(() => {
+        initializeFormMap(); // (adminMap.js)
+        if (window.TragoGeoPricing) {
+            window.TragoGeoPricing.initDeliveryPricingForm();
+        }
+    }, 100);
 }
 
 /* --- Lógica de Supabase Realtime --- */
@@ -391,6 +396,12 @@ function resetDeliveryForm() {
     
     document.getElementById('client-name').readOnly = false;
     document.getElementById('client-phone1').readOnly = false;
+
+    ['pickup-lat', 'pickup-lng', 'delivery-lat', 'delivery-lng', 'route-distance-km', 'route-duration-min', 'delivery-fee', 'final-order-price'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    if (window.TragoGeoPricing) window.TragoGeoPricing.resetDeliveryPricing();
 }
 
 /**

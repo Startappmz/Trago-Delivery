@@ -92,11 +92,24 @@ function initializeFormMap() {
             const position = event.target.getLatLng();
             document.getElementById('delivery-lng').value = position.lng;
             document.getElementById('delivery-lat').value = position.lat;
+            if (window.TragoGeoPricing) {
+                window.TragoGeoPricing.setCoords('delivery', { lat: position.lat, lng: position.lng }, document.getElementById('delivery-address')?.value || 'Pin no mapa');
+            }
         });
 
-        // Define os valores iniciais dos inputs
-        document.getElementById('delivery-lng').value = maputoCoords[1];
-        document.getElementById('delivery-lat').value = maputoCoords[0];
+        map.on('click', (event) => {
+            const position = event.latlng;
+            mapMarker.setLatLng(position);
+            document.getElementById('delivery-lng').value = position.lng;
+            document.getElementById('delivery-lat').value = position.lat;
+            if (window.TragoGeoPricing) {
+                window.TragoGeoPricing.setCoords('delivery', { lat: position.lat, lng: position.lng }, document.getElementById('delivery-address')?.value || 'Pin no mapa');
+            }
+        });
+
+        // Não define valores iniciais automaticamente para evitar cálculo com coordenadas assumidas.
+        document.getElementById('delivery-lng').value = '';
+        document.getElementById('delivery-lat').value = '';
 
     } catch (error) {
         console.error('Erro ao inicializar o mapa do formulário:', error);
@@ -116,6 +129,23 @@ function destroyFormMap() {
         console.log('Mapa do formulário destruído.');
     }
 }
+
+
+
+/**
+ * Move o pin do formulário para a coordenada escolhida por autocomplete.
+ */
+function setFormMapDeliveryPosition(lat, lng) {
+    if (!map || !mapMarker || !isValidMapCoordinate(lat) || !isValidMapCoordinate(lng)) return;
+    const nextLatLng = [Number(lat), Number(lng)];
+    mapMarker.setLatLng(nextLatLng);
+    map.setView(nextLatLng, Math.max(map.getZoom(), 15));
+    const latEl = document.getElementById('delivery-lat');
+    const lngEl = document.getElementById('delivery-lng');
+    if (latEl) latEl.value = Number(lat);
+    if (lngEl) lngEl.value = Number(lng);
+}
+window.setFormMapDeliveryPosition = setFormMapDeliveryPosition;
 
 /**
  * Inicializa o mapa em tempo real.

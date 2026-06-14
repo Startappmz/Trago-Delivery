@@ -19,6 +19,12 @@ const JWT_SECRET = Deno.env.get('JWT_SECRET') || '';
 const JWT_DAYS = Number(Deno.env.get('JWT_DAYS') || '30');
 const STORAGE_BUCKET = Deno.env.get('STORAGE_BUCKET_ORDER_IMAGES') || 'order-images';
 const MAX_IMAGE_BYTES = Number(Deno.env.get('UPLOAD_IMAGE_MAX_SIZE') || String(5 * 1024 * 1024));
+const TRAGO_GOOGLE_MAPS_API_KEY = Deno.env.get('TRAGO_GOOGLE_MAPS_API_KEY') || '';
+const ROUTE_PRICING_POLICY = Object.freeze({
+  baseDistanceKm: Number(Deno.env.get('TRAGO_BASE_DISTANCE_KM') || '11.6'),
+  baseFeeMzn: Number(Deno.env.get('TRAGO_BASE_DISTANCE_FEE_MZN') || '200'),
+  extraKmFeeMzn: Number(Deno.env.get('TRAGO_EXTRA_KM_FEE_MZN') || '15')
+});
 
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !JWT_SECRET) {
   console.warn('[trago-edge] Variáveis obrigatórias em falta: TRAGO_SUPABASE_URL, TRAGO_SUPABASE_SECRET_KEY, JWT_SECRET.');
@@ -258,6 +264,13 @@ const fromOrder = (row: AnyRecord) => row ? ({
   client_phone2: row.client_phone2,
   address_text: row.address_text,
   address_coords: row.address_coords,
+  pickup_address_text: row.pickup_address_text,
+  pickup_address_coords: row.pickup_address_coords,
+  service_price: Number(row.service_price || 0),
+  delivery_fee: Number(row.delivery_fee || 0),
+  route_distance_km: row.route_distance_km != null ? Number(row.route_distance_km) : null,
+  route_duration_min: row.route_duration_min != null ? Number(row.route_duration_min) : null,
+  route_pricing_source: row.route_pricing_source,
   image_url: row.image_url,
   verification_code: row.verification_code,
   created_by_admin: row.created_by_admin,
@@ -443,6 +456,80 @@ const normalizeCoordinates = (lat: unknown, lng: unknown) => {
   const parsedLng = Number(lng);
   if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) return null;
   return { lat: parsedLat, lng: parsedLng };
+};
+
+const isValidCoordinate = (coord: AnyRecord | null | undefined) => Boolean(coord && Number.isFinite(Number(coord.lat)) && Number.isFinite(Number(coord.lng)));
+
+const calculateDeliveryFee = (distanceKm: number) => {
+  const distance = Math.max(0, Number(distanceKm) || 0);
+  if (distance <= ROUTE_PRICING_POLICY.baseDistanceKm) return ROUTE_PRICING_POLICY.baseFeeMzn;
+  const extraKm = Math.ceil(distance - ROUTE_PRICING_POLICY.baseDistanceKm);
+  return ROUTE_PRICING_POLICY.baseFeeMzn + (extraKm * ROUTE_PRICING_POLICY.extraKmFeeMzn);
+};
+
+const haversineKm = (origin: AnyRecord, destination: AnyRecord) => {
+  const R = 6371;
+  const dLat = (Number(destination.lat) - Number(origin.lat)) * Math.PI / 180;
+  const dLng = (Number(destination.lng) - Number(origin.lng)) * Math.PI / 180;
+  const lat1 = Number(origin.lat) * Math.PI / 180;
+  const lat2 = Number(destination.lat) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const quoteWithGoogleRoutes = async (origin: AnyRecord, destination: AnyRecord) => {
+  if (!TRAGO_GOOGLE_MAPS_API_KEY) return null;
+  const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': TRAGO_GOOGLE_MAPS_API_KEY,
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration'
+    },
+    body: JSON.stringify({
+      origin: { location: { latLng: { latitude: Number(origin.lat), longitude: Number(origin.lng) } } },
+      destination: { location: { latLng: { latitude: Number(destination.lat), longitude: Number(destination.lng) } } },
+      travelMode: 'TWO_WHEELER',
+      routingPreference: 'TRAFFIC_UNAWARE',
+      languageCode: 'pt-PT',
+      units: 'METRIC'
+    })
+  });
+  if (!response.ok) return null;
+  const data = await response.json();
+  const route = data.routes?.[0];
+  if (!route?.distanceMeters) return null;
+  const distanceKm = Number(route.distanceMeters) / 1000;
+  const durationMin = route.duration ? Math.round(Number(String(route.duration).replace('s', '')) / 60) : null;
+  return { distance_km: distanceKm, duration_min: durationMin, source: 'google_routes' };
+};
+
+const buildRouteQuote = async (origin: AnyRecord, destination: AnyRecord) => {
+  if (!isValidCoordinate(origin) || !isValidCoordinate(destination)) {
+    throw new HttpError(400, 'Coordenadas de recolha e entrega são obrigatórias.');
+  }
+  let quote: AnyRecord | null = null;
+  try {
+    quote = await quoteWithGoogleRoutes(origin, destination);
+  } catch (_error) {
+    quote = null;
+  }
+  if (!quote) {
+    const distanceKm = haversineKm(origin, destination);
+    quote = {
+      distance_km: distanceKm,
+      duration_min: Math.max(1, Math.round((distanceKm / 35) * 60)),
+      source: 'haversine_fallback'
+    };
+  }
+  const deliveryFee = calculateDeliveryFee(Number(quote.distance_km));
+  return {
+    distance_km: Number(Number(quote.distance_km).toFixed(2)),
+    duration_min: quote.duration_min,
+    delivery_fee: Number(Number(deliveryFee).toFixed(2)),
+    source: quote.source,
+    policy: ROUTE_PRICING_POLICY
+  };
 };
 
 const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -868,6 +955,17 @@ const routeClients = async (req: Request, path: string, method: string) => {
   return null;
 };
 
+
+const routeGeo = async (req: Request, path: string, method: string) => {
+  if (path === '/api/geo/quote' && method === 'POST') {
+    await requireUser(req, 'admin');
+    const body = await readBody(req) as AnyRecord;
+    const quote = await buildRouteQuote(body.origin, body.destination);
+    return json(quote);
+  }
+  return null;
+};
+
 const routeOrders = async (req: Request, path: string, method: string) => {
   if (path === '/api/orders' && method === 'POST') {
     const user = await requireUser(req, 'admin');
@@ -879,6 +977,18 @@ const routeOrders = async (req: Request, path: string, method: string) => {
     const imageFile = isForm ? ((body as FormData).get('image') || (body as FormData).get('file') || Array.from((body as FormData).values()).find((value) => value instanceof File)) as File | null : null;
     const imageUrl = await uploadOrderImage(imageFile);
     const coordinates = normalizeCoordinates(get('lat'), get('lng'));
+    const pickupCoordinates = normalizeCoordinates(get('pickup_lat'), get('pickup_lng'));
+    const baseServicePrice = toNumber(get('service_price') ?? get('price'), 0);
+    let routeQuote: AnyRecord = {
+      distance_km: toNumber(get('route_distance_km'), 0),
+      duration_min: toNumber(get('route_duration_min'), 0),
+      delivery_fee: toNumber(get('delivery_fee'), 0),
+      source: 'frontend'
+    };
+    if (pickupCoordinates && coordinates) {
+      routeQuote = await buildRouteQuote(pickupCoordinates, coordinates);
+    }
+    const totalOrderPrice = baseServicePrice + toNumber(routeQuote.delivery_fee, 0);
     const autoAssign = String(get('autoAssign') || '').toLowerCase() === 'true';
     const bestProfile = autoAssign ? await findBestDriverProfile(coordinates) : null;
     const rawPayment = String(get('payment_method') || '').trim();
@@ -886,10 +996,17 @@ const routeOrders = async (req: Request, path: string, method: string) => {
 
     const orderRow = await insertRow('orders', {
       service_type: clean(get('service_type')),
-      price: toNumber(get('price'), 0),
+      price: toNumber(totalOrderPrice, 0),
+      service_price: baseServicePrice,
+      delivery_fee: toNumber(routeQuote.delivery_fee, 0),
+      route_distance_km: toNumber(routeQuote.distance_km, 0),
+      route_duration_min: routeQuote.duration_min || null,
+      route_pricing_source: routeQuote.source || 'fallback',
       client_name: clean(get('client_name')),
       client_phone1: clean(get('client_phone1')),
       client_phone2: clean(get('client_phone2')) || '',
+      pickup_address_text: clean(get('pickup_address_text')) || '',
+      pickup_address_coords: pickupCoordinates,
       address_text: clean(get('address_text')) || '',
       address_coords: coordinates,
       client: isValidId(String(get('clientId') || '')) ? String(get('clientId')) : null,
@@ -1331,7 +1448,7 @@ Deno.serve(async (req) => {
   try {
     if (path === '/health') return json({ status: 'ok', runtime: 'supabase-edge-functions', storageBucket: STORAGE_BUCKET });
 
-    const handlers = [routeAuth, routeRealtime, routeDrivers, routeClients, routeOrders, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
+    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeOrders, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
     for (const handler of handlers) {
       const response = await handler(req, path, method);
       if (response) return response;

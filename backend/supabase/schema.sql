@@ -66,6 +66,13 @@ create table if not exists public.orders (
   client_phone2 text,
   address_text text,
   address_coords jsonb,
+  pickup_address_text text,
+  pickup_address_coords jsonb,
+  service_price numeric(12,2) not null default 0,
+  delivery_fee numeric(12,2) not null default 0,
+  route_distance_km numeric(10,2),
+  route_duration_min numeric(10,2),
+  route_pricing_source text,
   image_url text,
   verification_code text not null,
   created_by_admin text references public.users(id) on delete set null,
@@ -148,6 +155,7 @@ create index if not exists idx_orders_status_created on public.orders(status, cr
 create index if not exists idx_orders_driver_status on public.orders(assigned_to_driver, status);
 create index if not exists idx_orders_client_completed on public.orders(client, status, timestamp_completed desc);
 create index if not exists idx_orders_payment_method on public.orders(payment_method);
+create index if not exists idx_orders_route_distance on public.orders(route_distance_km);
 create index if not exists idx_trips_driver_started on public.trips(driver, started_at desc);
 create index if not exists idx_expenses_date_category on public.expenses(date desc, category);
 create index if not exists idx_company_costs_date_category on public.company_costs(date desc, category);

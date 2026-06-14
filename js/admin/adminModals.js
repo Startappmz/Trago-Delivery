@@ -226,9 +226,13 @@ async function openHistoryDetailModal(orderId) {
         body.innerHTML = `
             <p><strong>Cliente:</strong> ${order.client_name}</p>
             <p><strong>Telefone:</strong> ${order.client_phone1}</p>
-            <p><strong>Endereço:</strong> ${order.address_text || 'N/D'}</p>
+            <p><strong>Ponto de Recolha:</strong> ${order.pickup_address_text || 'N/D'}</p>
+            <p><strong>Ponto de Entrega:</strong> ${order.address_text || 'N/D'}</p>
             ${coordsHtml}
-            <p><strong>Valor:</strong> ${order.price ? order.price.toFixed(2) + ' MZN' : 'N/D'}</p>
+            <p><strong>Distância:</strong> ${order.route_distance_km ? Number(order.route_distance_km).toFixed(2) + ' km' : 'N/D'}</p>
+            <p><strong>Preço Serviço:</strong> ${order.service_price ? Number(order.service_price).toFixed(2) + ' MZN' : '0.00 MZN'}</p>
+            <p><strong>Taxa Distância:</strong> ${order.delivery_fee ? Number(order.delivery_fee).toFixed(2) + ' MZN' : '0.00 MZN'}</p>
+            <p><strong>Total:</strong> ${order.price ? order.price.toFixed(2) + ' MZN' : 'N/D'}</p>
             <p><strong>Natureza:</strong> ${SERVICE_NAMES[order.service_type] || order.service_type}</p>
             <p><strong>Status:</strong> ${typeof getOrderStatusLabel === 'function' ? getOrderStatusLabel(order.status) : order.status}</p>
             <p><strong>Código:</strong> ${order.verification_code}</p>

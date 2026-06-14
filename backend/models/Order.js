@@ -15,6 +15,13 @@ const Order = createModel({
     client_phone2: 'client_phone2',
     address_text: 'address_text',
     address_coords: 'address_coords',
+    pickup_address_text: 'pickup_address_text',
+    pickup_address_coords: 'pickup_address_coords',
+    service_price: 'service_price',
+    delivery_fee: 'delivery_fee',
+    route_distance_km: 'route_distance_km',
+    route_duration_min: 'route_duration_min',
+    route_pricing_source: 'route_pricing_source',
     image_url: 'image_url',
     verification_code: 'verification_code',
     created_by_admin: 'created_by_admin',
@@ -39,6 +46,9 @@ const Order = createModel({
   defaults: {
     status: ORDER_STATUS.PENDING,
     price: 0,
+    service_price: 0,
+    delivery_fee: 0,
+    route_distance_km: 0,
     valor_motorista: 0,
     valor_empresa: 0,
     payment_method: 'cash'

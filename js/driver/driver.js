@@ -158,7 +158,7 @@ async function loadMyDeliveries() {
             card.innerHTML = `
                 <div class="entrega-card-header">
                     <strong>Pedido #${order._id.slice(-6)}</strong>
-                    <span><i class="fas fa-map-marker-alt"></i> ${order.address_text ? order.address_text.split(',')[0] || 'Destino' : 'Destino'}</span>
+                    <span><i class="fas fa-map-marker-alt"></i> ${order.address_text ? order.address_text.split(',')[0] || 'Entrega' : 'Entrega'}</span>
                 </div>
                 <p><strong>Cliente:</strong> ${order.client_name}</p>
                 <p><strong>Serviço:</strong> ${SERVICE_NAMES[order.service_type] || order.service_type}</p>
@@ -254,7 +254,7 @@ function fillDetalheEntrega(order) {
 
     document.getElementById('detalhe-cliente-nome').innerHTML = `<strong>Nome:</strong> ${order.client_name}`;
     document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Telefone:</strong> ${order.client_phone1}`;
-    document.getElementById('detalhe-cliente-endereco').innerHTML = `<strong>Endereço:</strong> ${order.address_text || 'N/D'}`;
+    document.getElementById('detalhe-cliente-endereco').innerHTML = `<strong>Recolha:</strong> ${order.pickup_address_text || 'N/D'}<br><strong>Entrega:</strong> ${order.address_text || 'N/D'}${order.route_distance_km ? `<br><strong>Distância:</strong> ${Number(order.route_distance_km).toFixed(2)} km` : ''}`;
     
     // ===== PAYMENT METHOD (EXECUTA SEMPRE) =====
     const paymentMap = {

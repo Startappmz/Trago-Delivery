@@ -826,15 +826,29 @@ async function handleNewDelivery(e) {
     formData.append('payment_method', paymentMethod);
     
     const autoAssign = document.getElementById('autoAssignCheckbox').checked;
-    
-    if (autoAssign) {
-        const lat = document.getElementById('delivery-lat').value;
-        const lng = document.getElementById('delivery-lng').value;
-        
-        if (!lat || !lng) {
-            showCustomAlert('Erro de Atribuição', 'A atribuição automática requer que um PIN seja definido no mapa.', 'error');
-            return;
-        }
+    const pickupLat = document.getElementById('pickup-lat')?.value;
+    const pickupLng = document.getElementById('pickup-lng')?.value;
+    const deliveryLat = document.getElementById('delivery-lat')?.value;
+    const deliveryLng = document.getElementById('delivery-lng')?.value;
+    const servicePrice = Number(document.getElementById('delivery-price')?.value || 0);
+    const totalPrice = Number(document.getElementById('final-order-price')?.value || 0);
+
+    if (!pickupLat || !pickupLng) {
+        showCustomAlert('Ponto de Recolha em falta', 'Seleccione uma sugestão válida para o ponto de recolha.', 'error');
+        return;
+    }
+
+    if (!deliveryLat || !deliveryLng) {
+        showCustomAlert('Ponto de Entrega em falta', 'Seleccione uma sugestão válida ou marque o pin do ponto de entrega no mapa.', 'error');
+        return;
+    }
+
+    formData.delete('price');
+    formData.append('price', Number(totalPrice || servicePrice || 0).toFixed(2));
+
+    if (autoAssign && (!deliveryLat || !deliveryLng)) {
+        showCustomAlert('Erro de Atribuição', 'A atribuição automática requer que um PIN seja definido no mapa.', 'error');
+        return;
     }
     
     submitButton.disabled = true;
