@@ -10,4 +10,4 @@ window.TRAGO_SUPABASE_URL = 'https://kxpfuenotwqxmtcfbyid.supabase.co';
 window.TRAGO_SUPABASE_ANON_KEY = 'sb_publishable_kJqJXmIiEVDKDKGIcZjXLQ_OYAwl-EX';
 
 // Opcional: browser key restrita por domínio para Google Maps JavaScript + Places API.
-window.TRAGO_GOOGLE_MAPS_API_KEY = '';
+// Geocoding gratuito: não precisa de chave Google no front-end; o backend usa TRAGO_ORS_API_KEY nas Edge Function Secrets.

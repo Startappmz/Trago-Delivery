@@ -10,4 +10,3 @@ window.TRAGO_SUPABASE_URL = 'https://kxpfuenotwqxmtcfbyid.supabase.co';
 window.TRAGO_SUPABASE_ANON_KEY = 'sb_publishable_kJqJXmIiEVDKDKGIcZjXLQ_OYAwl-EX';
 
 // Opcional: chave pública restrita do Google Maps JavaScript/Places API.
-window.TRAGO_GOOGLE_MAPS_API_KEY = window.TRAGO_GOOGLE_MAPS_API_KEY || '';

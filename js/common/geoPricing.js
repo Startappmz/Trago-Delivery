@@ -2,8 +2,8 @@
  * Trago Delivery - Geolocalização e preço por distância
  *
  * - Captura ponto de recolha e ponto de entrega.
- * - Usa Google Places Autocomplete quando TRAGO_GOOGLE_MAPS_API_KEY estiver configurada.
- * - Usa pesquisa OpenStreetMap/Nominatim como fallback sem chave.
+ * - Usa pesquisa OpenStreetMap/Nominatim para sugestões sem chave Google.
+ * - Calcula a rota no backend via OpenRouteService quando TRAGO_ORS_API_KEY estiver configurada.
  * - Calcula preço por distância com a política operacional da Trago Delivery.
  */
 (function () {
@@ -25,8 +25,7 @@
     pickup: null,
     delivery: null,
     form: null,
-    debounceTimers: {},
-    googleLoadingPromise: null
+    debounceTimers: {}
   };
 
   const $ = (id) => document.getElementById(id);
@@ -113,7 +112,7 @@
         durationMin: quote.duration_min,
         deliveryFee: quote.delivery_fee,
         total,
-        source: quote.source === 'google_routes' ? 'Google Routes API' : 'Cálculo estimado'
+        source: quote.source === 'openrouteservice' ? 'OpenRouteService' : 'Cálculo estimado'
       });
     } catch (error) {
       console.warn('[TragoGeoPricing] Fallback local:', error.message || error);
@@ -224,50 +223,6 @@
     });
   }
 
-  function loadGooglePlacesScript() {
-    const key = String(window.TRAGO_GOOGLE_MAPS_API_KEY || '').trim();
-    if (!key) return Promise.reject(new Error('Google Maps API key não configurada.'));
-    if (window.google?.maps?.places) return Promise.resolve();
-    if (state.googleLoadingPromise) return state.googleLoadingPromise;
-
-    state.googleLoadingPromise = new Promise((resolve, reject) => {
-      const callbackName = `tragoGooglePlacesReady_${Date.now()}`;
-      window[callbackName] = () => {
-        delete window[callbackName];
-        resolve();
-      };
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&callback=${callbackName}`;
-      script.async = true;
-      script.defer = true;
-      script.onerror = () => reject(new Error('Falha ao carregar Google Places.'));
-      document.head.appendChild(script);
-    });
-    return state.googleLoadingPromise;
-  }
-
-  async function attachGoogleAutocomplete(input, kind) {
-    await loadGooglePlacesScript();
-    const circle = new google.maps.Circle({
-      center: { lat: MAPUTO_BIAS.lat, lng: MAPUTO_BIAS.lng },
-      radius: MAPUTO_BIAS.radiusMeters
-    });
-    const autocomplete = new google.maps.places.Autocomplete(input, {
-      componentRestrictions: { country: 'mz' },
-      fields: ['geometry', 'name', 'formatted_address']
-    });
-    autocomplete.setBounds(circle.getBounds());
-
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place?.geometry?.location) return;
-      const label = place.formatted_address || place.name || input.value;
-      setCoords(kind, {
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng()
-      }, label);
-    });
-  }
 
   function initDeliveryPricingForm(options = {}) {
     state.form = {
@@ -300,22 +255,8 @@
       }
     });
 
-    const attachFallbacks = () => {
-      attachNominatimFallback(pickupInput, 'pickup');
-      attachNominatimFallback(deliveryInput, 'delivery');
-    };
-
-    if (String(window.TRAGO_GOOGLE_MAPS_API_KEY || '').trim()) {
-      Promise.all([
-        attachGoogleAutocomplete(pickupInput, 'pickup'),
-        attachGoogleAutocomplete(deliveryInput, 'delivery')
-      ]).catch((error) => {
-        console.warn('[TragoGeoPricing] Google Places indisponível, fallback activo:', error.message || error);
-        attachFallbacks();
-      });
-    } else {
-      attachFallbacks();
-    }
+    attachNominatimFallback(pickupInput, 'pickup');
+    attachNominatimFallback(deliveryInput, 'delivery');
 
     servicePriceInput.addEventListener('input', updateQuote);
     updateQuote();

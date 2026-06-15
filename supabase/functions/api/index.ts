@@ -19,7 +19,7 @@ const JWT_SECRET = Deno.env.get('JWT_SECRET') || '';
 const JWT_DAYS = Number(Deno.env.get('JWT_DAYS') || '30');
 const STORAGE_BUCKET = Deno.env.get('STORAGE_BUCKET_ORDER_IMAGES') || 'order-images';
 const MAX_IMAGE_BYTES = Number(Deno.env.get('UPLOAD_IMAGE_MAX_SIZE') || String(5 * 1024 * 1024));
-const TRAGO_GOOGLE_MAPS_API_KEY = Deno.env.get('TRAGO_GOOGLE_MAPS_API_KEY') || '';
+const TRAGO_ORS_API_KEY = Deno.env.get('TRAGO_ORS_API_KEY') || '';
 const ROUTE_PRICING_POLICY = Object.freeze({
   baseDistanceKm: Number(Deno.env.get('TRAGO_BASE_DISTANCE_KM') || '11.6'),
   baseFeeMzn: Number(Deno.env.get('TRAGO_BASE_DISTANCE_FEE_MZN') || '200'),
@@ -477,40 +477,37 @@ const haversineKm = (origin: AnyRecord, destination: AnyRecord) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const quoteWithGoogleRoutes = async (origin: AnyRecord, destination: AnyRecord) => {
-  if (!TRAGO_GOOGLE_MAPS_API_KEY) return null;
-  const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': TRAGO_GOOGLE_MAPS_API_KEY,
-      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration'
-    },
-    body: JSON.stringify({
-      origin: { location: { latLng: { latitude: Number(origin.lat), longitude: Number(origin.lng) } } },
-      destination: { location: { latLng: { latitude: Number(destination.lat), longitude: Number(destination.lng) } } },
-      travelMode: 'TWO_WHEELER',
-      routingPreference: 'TRAFFIC_UNAWARE',
-      languageCode: 'pt-PT',
-      units: 'METRIC'
-    })
+const quoteWithOpenRouteService = async (origin: AnyRecord, destination: AnyRecord) => {
+  if (!TRAGO_ORS_API_KEY) return null;
+  const url = new URL('https://api.openrouteservice.org/v2/directions/driving-car');
+  url.searchParams.set('api_key', TRAGO_ORS_API_KEY);
+  // OpenRouteService usa longitude,latitude.
+  url.searchParams.set('start', `${Number(origin.lng)},${Number(origin.lat)}`);
+  url.searchParams.set('end', `${Number(destination.lng)},${Number(destination.lat)}`);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json, application/geo+json' }
   });
   if (!response.ok) return null;
-  const data = await response.json();
-  const route = data.routes?.[0];
-  if (!route?.distanceMeters) return null;
-  const distanceKm = Number(route.distanceMeters) / 1000;
-  const durationMin = route.duration ? Math.round(Number(String(route.duration).replace('s', '')) / 60) : null;
-  return { distance_km: distanceKm, duration_min: durationMin, source: 'google_routes' };
-};
 
+  const data = await response.json();
+  const summary = data?.features?.[0]?.properties?.summary;
+  if (!summary || !Number.isFinite(Number(summary.distance))) return null;
+
+  return {
+    distance_km: Number(summary.distance) / 1000,
+    duration_min: Number.isFinite(Number(summary.duration)) ? Math.max(1, Math.round(Number(summary.duration) / 60)) : null,
+    source: 'openrouteservice'
+  };
+};
 const buildRouteQuote = async (origin: AnyRecord, destination: AnyRecord) => {
   if (!isValidCoordinate(origin) || !isValidCoordinate(destination)) {
     throw new HttpError(400, 'Coordenadas de recolha e entrega são obrigatórias.');
   }
   let quote: AnyRecord | null = null;
   try {
-    quote = await quoteWithGoogleRoutes(origin, destination);
+    quote = await quoteWithOpenRouteService(origin, destination);
   } catch (_error) {
     quote = null;
   }
