@@ -1,302 +1,555 @@
-/* ============================================
-   Trago Delivery - Driver Panel Styles
-   Based on TemplateMo Glass Admin
-   VERSÃO FINAL - CONSISTÊNCIA TOTAL
-============================================ */
+/* =========================================================
+   Trago Delivery · Painel do Motorista
+   Intervenção de raiz: layout claro, compacto e mapa interno estável.
+   ========================================================= */
 
-/* ============================================
-   DRIVER BODY
-============================================ */
-.motorista-body {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-dark);
+:root {
+    --driver-bg: #f6f7f2;
+    --driver-card: #ffffff;
+    --driver-card-soft: #fbfcf8;
+    --driver-border: #ded9cf;
+    --driver-border-soft: #ebe6dc;
+    --driver-text: #272324;
+    --driver-muted: #6f686a;
+    --driver-green: #2f7a3c;
+    --driver-green-soft: #eaf5da;
+    --driver-lime: #8dc543;
+    --driver-orange: #f6a226;
+    --driver-blue: #2563eb;
+    --driver-danger: #dc2626;
+    --driver-shadow: 0 16px 44px rgba(39, 35, 36, 0.10);
+    --driver-shadow-soft: 0 8px 24px rgba(39, 35, 36, 0.07);
 }
 
-/* ============================================
-   DRIVER HEADER
-============================================ */
-.motorista-header {
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--glass-border);
-    padding: 0.75rem 1.5rem;
+html,
+body.motorista-body {
+    min-height: 100%;
+    background: var(--driver-bg) !important;
+    color: var(--driver-text);
+    overflow-x: hidden;
+}
+
+.motorista-body {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.motorista-body .background,
+.motorista-body .orb {
+    display: none !important;
+}
+
+/* ---------- Header ---------- */
+.motorista-header {
+    width: min(1440px, calc(100% - 32px));
+    min-height: 72px;
+    margin: 0 auto 14px;
+    padding: 10px 18px;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 900;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--driver-border);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+    box-shadow: var(--driver-shadow-soft);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 
 .motorista-logo {
-    max-width: 120px;
+    width: 126px;
+    max-height: 58px;
     height: auto;
+    display: block;
 }
 
 .motorista-profile {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-end;
+    gap: 10px;
 }
 
-.motorista-profile span {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-right: 8px;
+.motorista-profile > span {
+    color: var(--driver-muted);
+    font-size: 0.92rem;
+    white-space: nowrap;
 }
 
 #driver-name-header {
-    color: var(--text-primary);
-    font-weight: 600;
+    color: var(--driver-text);
+    font-weight: 760;
 }
 
-.btn-logout {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-secondary);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
+.btn-logout,
+.btn-mobile-driver-menu {
+    min-height: 42px;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 14px;
+    border: 1px solid var(--driver-border);
+    border-radius: 8px;
+    background: var(--driver-card-soft);
+    color: var(--driver-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 760;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 
-.btn-logout:hover {
-    background: var(--glass-hover);
-    border-color: var(--emerald-light);
-    color: var(--text-primary);
+.btn-logout:hover,
+.btn-mobile-driver-menu:hover {
+    background: #ffffff;
+    border-color: var(--driver-lime);
+    color: var(--driver-green);
 }
 
 #driver-logout.btn-logout:hover {
-    border-color: var(--danger);
-    color: var(--danger);
+    border-color: rgba(220, 38, 38, 0.35);
+    color: var(--driver-danger);
 }
 
-/* ============================================
-   MOBILE MENU (DRIVER)
-============================================ */
 .btn-mobile-driver-menu {
     display: none;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-primary);
-    font-size: 1.1rem;
-    padding: 8px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.btn-mobile-driver-menu:hover {
-    background: var(--glass-hover);
-    border-color: var(--emerald-light);
+    width: 44px;
+    padding: 0;
 }
 
 .driver-mobile-menu {
     position: fixed;
-    top: 70px;
+    top: 76px;
     right: 16px;
-    width: 220px;
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--border-radius);
+    width: min(260px, calc(100vw - 32px));
     padding: 8px;
-    z-index: 1000;
+    background: #ffffff;
+    border: 1px solid var(--driver-border);
+    border-radius: 12px;
+    box-shadow: var(--driver-shadow);
+    z-index: 1100;
     opacity: 0;
-    transform: scale(0.9) translateY(-10px);
-    transition: all var(--transition-normal);
+    transform: translateY(-8px) scale(0.98);
     pointer-events: none;
-    box-shadow: 0 25px 50px -12px var(--glass-shadow);
+    transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .driver-mobile-menu.open {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
     pointer-events: auto;
 }
 
 .driver-mobile-menu ul {
+    margin: 0;
+    padding: 0;
     list-style: none;
 }
 
-.driver-mobile-menu li {
-    margin-bottom: 2px;
-}
-
-.driver-mobile-menu li a {
+.driver-mobile-menu a {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
-    color: var(--text-secondary);
-    text-decoration: none;
+    padding: 11px 12px;
     border-radius: 8px;
-    transition: all var(--transition-fast);
-    font-size: 14px;
+    color: var(--driver-text);
+    text-decoration: none;
+    font-weight: 700;
 }
 
-.driver-mobile-menu li a i {
-    width: 18px;
-    font-size: 1rem;
+.driver-mobile-menu a:hover {
+    background: var(--driver-green-soft);
+    color: var(--driver-green);
 }
 
-.driver-mobile-menu li a:hover {
-    background: var(--glass-hover);
-    color: var(--text-primary);
-}
-
-.driver-mobile-menu li:last-child a {
-    color: var(--danger);
-}
-
-.driver-mobile-menu li:last-child a:hover {
-    background: rgba(220, 38, 38, 0.15);
-}
-
-/* ============================================
-   MAIN CONTENT (DRIVER)
-============================================ */
+/* ---------- Containers ---------- */
 .motorista-main {
-    padding: 1.5rem;
-    max-width: 900px;
-    margin: 1.5rem auto;
-    width: 100%;
+    width: min(1440px, calc(100% - 32px));
+    margin: 0 auto 32px;
+    padding: 0;
 }
 
 .content-section {
-    margin-bottom: 1.5rem;
+    margin: 0 0 18px;
 }
 
-.content-section .glass-card {
-    padding: 1.5rem;
+.content-section .glass-card,
+.glass-card {
+    background: var(--driver-card) !important;
+    border: 1px solid var(--driver-border) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--driver-shadow-soft) !important;
 }
 
-/* ============================================
-   ENTREGA CARDS
-============================================ */
+.content-section > .glass-card {
+    padding: 18px;
+}
+
+.section-title {
+    margin: 0 0 14px;
+    color: var(--driver-text) !important;
+    font-size: clamp(1.12rem, 1.8vw, 1.42rem) !important;
+    font-weight: 820 !important;
+    line-height: 1.2;
+}
+
+.section-title i {
+    color: var(--driver-lime);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ---------- Lista de entregas ---------- */
+#entregas-container {
+    display: grid;
+    gap: 12px;
+}
+
 .entrega-card {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-left: 4px solid var(--emerald);
-    border-radius: 12px;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid var(--driver-border-soft);
+    border-left: 4px solid var(--driver-lime);
     cursor: pointer;
-    transition: all var(--transition-normal);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .entrega-card:hover {
-    background: var(--glass-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 25px 50px -12px var(--glass-shadow);
-    border-color: var(--emerald-light);
+    transform: translateY(-1px);
+    border-color: rgba(141, 197, 67, 0.55);
+    box-shadow: var(--driver-shadow-soft);
 }
 
 .entrega-card-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.75rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--driver-text);
+    font-weight: 820;
 }
 
 .entrega-card-header span {
-    color: var(--text-secondary);
-    font-weight: 400;
-    font-size: 0.85rem;
+    color: var(--driver-muted);
+    font-size: 0.84rem;
+    font-weight: 650;
+    text-align: right;
 }
 
 .entrega-card p {
-    margin-bottom: 0.4rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+    margin: 0;
+    color: var(--driver-muted);
+    font-size: 0.92rem;
+    line-height: 1.4;
+}
+
+.entrega-card p strong {
+    color: var(--driver-text);
 }
 
 .ver-detalhes-btn {
-    display: inline-block;
-    margin-top: 0.75rem;
-    color: var(--emerald-light);
-    font-weight: 600;
-    font-size: 0.85rem;
-    transition: color var(--transition-fast);
+    justify-self: start;
+    margin-top: 4px;
+    color: var(--driver-green);
+    font-size: 0.84rem;
+    font-weight: 820;
 }
 
-.ver-detalhes-btn:hover {
-    color: var(--gold);
+.loading-state,
+.empty-state,
+.error-state {
+    padding: 18px;
+    border-radius: 10px;
+    background: var(--driver-card-soft);
+    border: 1px dashed var(--driver-border);
+    color: var(--driver-muted);
+    font-weight: 650;
+    text-align: center;
 }
 
-/* ============================================
-   DETALHES GRID
-============================================ */
-.detalhes-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.25rem;
-    margin-top: 1.25rem;
+.error-state {
+    color: var(--driver-danger);
 }
 
-/* ============================================
-   DETALHES ENTREGA
-============================================ */
+/* ---------- Detalhe premium ---------- */
+.driver-detail-card {
+    padding: 18px !important;
+}
+
+.driver-detail-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.driver-detail-topbar > div {
+    flex: 1 1 auto;
+    text-align: right;
+}
+
+.driver-eyebrow {
+    margin: 0 0 3px;
+    color: var(--driver-muted);
+    font-size: 0.76rem;
+    font-weight: 820;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
 .btn-voltar {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    margin-bottom: 1.25rem;
-    transition: all var(--transition-fast);
+    min-height: 38px;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid var(--driver-border);
+    border-radius: 8px;
+    background: var(--driver-card-soft);
+    color: var(--driver-muted);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 760;
+    cursor: pointer;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
 }
 
 .btn-voltar:hover {
-    color: var(--emerald-light);
-    transform: translateX(-3px);
+    background: #ffffff;
+    border-color: var(--driver-lime);
+    color: var(--driver-green);
 }
 
-.detalhes-bloco {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--glass-border);
+.driver-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.58fr) minmax(330px, 0.72fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.driver-map-card {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    overflow: hidden;
     border-radius: 12px;
-    padding: 1.25rem;
-    margin-bottom: 0;
+    background: #ffffff;
+    border: 1px solid var(--driver-border);
+    box-shadow: var(--driver-shadow-soft);
 }
 
-.detalhes-bloco h3 {
-    color: var(--emerald-light);
-    margin-bottom: 0.75rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+.driver-map-header,
+.driver-map-footer {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, #ffffff, #fbfcf8);
+}
+
+.driver-map-header {
+    border-bottom: 1px solid var(--driver-border-soft);
+}
+
+.driver-map-footer {
+    border-top: 1px solid var(--driver-border-soft);
+}
+
+.driver-map-kicker {
+    margin: 0 0 3px;
+    color: var(--driver-muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.driver-map-header h3 {
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--driver-text);
+    font-size: 1.04rem;
+    line-height: 1.2;
+    font-weight: 850;
+}
+
+.driver-map-header h3 i {
+    color: var(--driver-lime);
+}
+
+.driver-map-header p:last-child,
+#driver-map-status {
+    margin: 0;
+    color: var(--driver-muted);
+    font-size: 0.84rem;
+    font-weight: 620;
+}
+
+.driver-map-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 850;
+}
+
+.driver-map-badge[data-state="active"] {
+    background: var(--driver-green-soft);
+    border-color: rgba(141, 197, 67, 0.50);
+    color: #166534;
+}
+
+.driver-map-stage {
+    position: relative;
+    height: clamp(480px, 64vh, 760px);
+    min-height: 480px;
+    background: #eef2f0;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+.driver-route-map {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    background: #eef2f0 !important;
+    z-index: 1;
+    overflow: hidden !important;
+}
+
+.driver-map-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: var(--driver-muted);
+    font-size: 0.8rem;
+    font-weight: 760;
+}
+
+.driver-map-legend span {
+    display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
+.legend-dot {
+    width: 9px;
+    height: 9px;
+    display: inline-block;
+    border-radius: 999px;
+}
+
+.legend-pickup { background: var(--driver-orange); }
+.legend-delivery { background: var(--driver-green); }
+.legend-driver { background: var(--driver-blue); }
+
+.route-actions-inline {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-mapa {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid var(--driver-green);
+    border-radius: 8px;
+    background: var(--driver-green);
+    color: #ffffff;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 820;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.btn-mapa:hover {
+    background: #256932;
+    border-color: #256932;
+}
+
+.btn-mapa-secondary {
+    background: #ffffff;
+    color: var(--driver-text);
+    border-color: var(--driver-border);
+}
+
+.btn-mapa-secondary:hover {
+    background: var(--driver-card-soft);
+    color: var(--driver-green);
+    border-color: var(--driver-lime);
+}
+
+.driver-side-panel {
+    position: relative;
+    z-index: 0;
+    min-width: 0;
+    display: grid;
+    gap: 12px;
+}
+
+.detalhes-bloco {
+    min-width: 0;
+    margin: 0;
+    padding: 14px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid var(--driver-border);
+    box-shadow: 0 1px 3px rgba(39, 35, 36, 0.05);
+}
+
+.detalhes-bloco h3 {
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--driver-text);
+    font-size: 0.9rem;
+    font-weight: 850;
+    line-height: 1.2;
+}
+
 .detalhes-bloco h3 i {
-    font-size: 1rem;
+    color: var(--driver-lime);
 }
 
 .detalhes-bloco p {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
+    margin: 0 0 7px;
+    color: var(--driver-muted);
+    font-size: 0.92rem;
+    line-height: 1.45;
 }
 
 .detalhes-bloco p:last-child {
@@ -304,317 +557,355 @@
 }
 
 .detalhes-bloco p strong {
-    color: var(--text-primary);
+    color: var(--driver-text);
+    font-weight: 820;
 }
 
-/* ============================================
-   BOTÃO MAPA
-============================================ */
-.btn-mapa {
+.motorista-body .driver-route-summary-card {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    background: linear-gradient(180deg, #ffffff, #fbfcf8);
+    overflow: hidden;
+}
+
+.route-flow {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0;
+}
+
+.route-point-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: grid !important;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 11px;
+    align-items: start;
+    padding: 12px;
+    border: 1px solid var(--driver-border-soft);
+    border-radius: 12px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.route-marker-dot {
+    width: 32px;
+    height: 32px;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    background: linear-gradient(135deg, var(--emerald), var(--emerald-light));
-    color: white;
-    padding: 10px 20px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 500;
-    margin-top: 0.75rem;
-    transition: all var(--transition-fast);
-    font-size: 0.85rem;
-    box-shadow: 0 4px 12px rgba(141, 197, 67, 0.3);
-}
-
-.btn-mapa:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(141, 197, 67, 0.4);
-}
-
-/* ============================================
-   CÓDIGO DE FINALIZAÇÃO
-============================================ */
-#codigo-finalizacao {
-    font-family: 'Space Mono', monospace;
-    font-size: 1.6rem;
-    font-weight: 700;
-    text-align: center;
-    letter-spacing: 0.3rem;
-    text-transform: uppercase;
-    background: var(--glass-bg);
-    border: 2px solid var(--glass-border);
-    padding: 0.75rem;
-    width: 100%;
-    max-width: 250px;
-    border-radius: 10px;
-    color: var(--text-primary);
-    transition: all var(--transition-fast);
-}
-
-#codigo-finalizacao:focus {
-    outline: none;
-    border-color: var(--emerald-light);
-    box-shadow: 0 0 20px rgba(167, 216, 107, 0.3);
-}
-
-/* ============================================
-   IMAGEM DA ENCOMENDA
-============================================ */
-.delivery-image-display {
-    text-align: center;
-}
-
-.delivery-image-display img {
-    max-width: 100%;
-    max-height: 250px;
-    border-radius: 12px;
-    border: 1px solid var(--glass-border);
-    object-fit: cover;
-}
-
-/* ============================================
-   BOTÃO INICIAR
-============================================ */
-.btn-iniciar {
-    background: linear-gradient(135deg, var(--emerald), var(--emerald-light));
-    color: white;
-    width: 100%;
-    font-size: 0.95rem;
-    padding: 0.75rem;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    box-shadow: 0 4px 12px rgba(141, 197, 67, 0.3);
+    border-radius: 10px;
+    color: #ffffff;
+    box-shadow: 0 7px 16px rgba(39, 35, 36, 0.16);
 }
 
-.btn-iniciar:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(141, 197, 67, 0.4);
+.route-point-pickup .route-marker-dot { background: var(--driver-orange); }
+.route-point-delivery .route-marker-dot { background: var(--driver-green); }
+
+.route-point-card small {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--driver-muted);
+    font-size: 0.7rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-#entrega-status {
-    font-weight: 600;
-    color: var(--emerald-light);
-    font-size: 0.95rem;
-    text-align: center;
-    margin-bottom: 0.75rem;
-}
-
-.status-info {
-    font-weight: 500;
-    color: var(--emerald);
-    font-size: 0.95rem;
-    text-align: center;
-    margin-bottom: 1rem;
-    padding: 0.5rem;
-    background: rgba(141, 197, 67, 0.1);
-    border-radius: 8px;
-}
-
-/* ============================================
-   CONFIG FORM
-============================================ */
-.config-form {
-    max-width: 600px;
-}
-
-.config-form .form-section {
-    margin-bottom: 0;
-    border-bottom: none;
-}
-
-/* ============================================
-   TABLE SECTION
-============================================ */
-.table-section {
-    margin-top: 2rem;
-}
-
-.table-section h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 1rem;
-}
-
-/* ============================================
-   RESPONSIVE (DRIVER)
-============================================ */
-@media (max-width: 992px) {
-    .motorista-header {
-        padding: 0.75rem 1rem;
-    }
-    
-    .motorista-profile {
-        display: none;
-    }
-    
-    .btn-mobile-driver-menu {
-        display: block;
-    }
-    
-    .motorista-main {
-        padding: 1rem;
-        margin-top: 1rem;
-    }
-    
-    .detalhes-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 768px) {
-    #codigo-finalizacao {
-        font-size: 1.3rem;
-        letter-spacing: 0.2rem;
-    }
-    
-    .detalhes-bloco {
-        padding: 1rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .btn-mapa {
-        width: 100%;
-        justify-content: center;
-    }
-}
-
-/* ============================================
-   MAPA INTERNO DO MOTORISTA · PREMIUM ROUTE UI
-============================================ */
-.driver-map-shell {
-    margin-top: 1.25rem;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(15, 23, 42, 0.10);
-    border-radius: 16px;
+.route-point-card strong,
+.route-address-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     overflow: hidden;
-    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.10);
+    color: var(--driver-text);
+    font-size: 0.94rem;
+    line-height: 1.34;
+    font-weight: 820;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: auto;
 }
 
-.driver-map-header {
+.route-address-full {
+    display: none;
+}
+
+.route-connector-line {
+    width: 2px;
+    height: 18px;
+    margin-left: 27px;
+    background: repeating-linear-gradient(to bottom, #b7b0a7 0 4px, transparent 4px 8px);
+}
+
+.route-metric-pill {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 1.1rem;
-    background: linear-gradient(180deg, #ffffff, #f8fafc);
-    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--driver-green-soft);
+    border: 1px solid rgba(141, 197, 67, 0.42);
 }
 
-.driver-map-header h3 {
-    margin: 0 0 0.2rem 0;
-    font-size: 1rem;
-    line-height: 1.2;
-    color: #0f172a;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.driver-map-header h3 i {
-    color: var(--emerald, #22c55e);
-}
-
-.driver-map-header p {
-    margin: 0;
-    color: #64748b;
-    font-size: 0.86rem;
-}
-
-.driver-map-badge {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
+.route-metric-pill span {
+    color: var(--driver-muted);
     font-size: 0.78rem;
-    font-weight: 700;
-    color: #475569;
-    background: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    border-radius: 999px;
-    padding: 0.42rem 0.75rem;
+    font-weight: 820;
 }
 
-.driver-map-badge[data-state="active"] {
-    color: #166534;
-    background: #dcfce7;
-    border-color: #86efac;
+.route-metric-pill strong {
+    color: var(--driver-green);
+    font-size: 0.96rem;
+    font-weight: 880;
 }
 
-.driver-route-map {
+.route-coords {
+    margin-top: 10px;
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: var(--driver-card-soft);
+    border: 1px solid var(--driver-border-soft);
+    color: var(--driver-muted);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.route-coords strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--driver-text);
+}
+
+.route-coords span {
+    display: grid;
+    gap: 4px;
+}
+
+.action-card .btn-primary,
+.btn-iniciar,
+#form-finalizacao .btn-primary {
     width: 100%;
-    min-height: 430px;
-    height: 54vh;
-    background: #eef2f7;
-    z-index: 1;
-}
-
-.driver-map-legend {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    padding: 0.78rem 1.1rem;
-    background: #ffffff;
-    border-top: 1px solid rgba(15, 23, 42, 0.08);
-    color: #475569;
-    font-size: 0.82rem;
-    font-weight: 600;
-}
-
-.driver-map-legend span {
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
-    gap: 0.42rem;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--driver-green) !important;
+    border-radius: 9px !important;
+    background: var(--driver-green) !important;
+    color: #ffffff !important;
+    font-weight: 850 !important;
+    cursor: pointer;
+    box-shadow: none !important;
 }
 
-.legend-dot {
-    width: 10px;
-    height: 10px;
-    display: inline-block;
-    border-radius: 999px;
+.action-card .btn-primary:hover,
+.btn-iniciar:hover,
+#form-finalizacao .btn-primary:hover {
+    background: #256932 !important;
+    border-color: #256932 !important;
+    transform: none !important;
 }
 
-.legend-pickup { background: #f59e0b; }
-.legend-delivery { background: #16a34a; }
-.legend-driver { background: #2563eb; }
-
-.route-summary-card {
-    grid-column: span 1;
+.status-info {
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: var(--driver-green-soft);
+    border: 1px solid rgba(141, 197, 67, 0.42);
+    color: var(--driver-green);
+    text-align: center;
+    font-weight: 800;
 }
 
-.route-actions-inline {
+#codigo-finalizacao {
+    width: 100%;
+    min-height: 46px;
+    text-align: center;
+    letter-spacing: 0.26rem;
+    text-transform: uppercase;
+    font-family: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+
+.delivery-image-display img {
+    width: 100%;
+    max-height: 210px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid var(--driver-border-soft);
+}
+
+#no-image-placeholder {
+    min-height: 98px;
     display: flex;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    margin-top: 0.85rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px dashed var(--driver-border);
+    background: var(--driver-card-soft);
+    color: var(--driver-muted);
+    text-align: center;
 }
 
-.btn-mapa {
-    border: none;
+#no-image-placeholder.hidden {
+    display: none !important;
 }
 
-.btn-mapa-secondary {
+/* ---------- Configurações e ganhos ---------- */
+.config-form,
+.form-section,
+.table-section {
+    max-width: 760px;
+}
+
+.form-section {
+    padding: 14px;
+    border: 1px solid var(--driver-border-soft);
+    border-radius: 12px;
     background: #ffffff;
-    color: #0f172a;
-    border: 1px solid rgba(15, 23, 42, 0.14);
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-.btn-mapa-secondary:hover {
-    border-color: var(--emerald, #22c55e);
-    color: #166534;
+.form-section h3,
+.table-section h3 {
+    margin: 0 0 8px;
+    color: var(--driver-text);
+    font-size: 1rem;
+    font-weight: 850;
+}
+
+.form-note {
+    margin: 0 0 12px;
+    color: var(--driver-muted);
+    font-size: 0.9rem;
+}
+
+.section-spaced {
+    margin-top: 14px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stat-card {
+    padding: 14px !important;
+}
+
+.stat-info h3 {
+    margin: 0 0 6px;
+    color: var(--driver-muted);
+    font-size: 0.8rem;
+    font-weight: 820;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.stat-value {
+    color: var(--driver-text);
+    font-size: clamp(1.35rem, 2vw, 1.8rem);
+    font-weight: 900;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--driver-border-soft);
+    border-radius: 10px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+}
+
+.data-table th,
+.data-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--driver-border-soft);
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.data-table th {
+    color: var(--driver-muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--driver-card-soft);
+}
+
+.value-success {
+    color: var(--driver-green) !important;
+    font-weight: 850;
+}
+
+/* ---------- Leaflet: isolamento total contra CSS global ---------- */
+.leaflet-container {
+    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    background: #eef2f0 !important;
+    cursor: grab;
+}
+
+.leaflet-container * {
+    box-sizing: content-box;
+}
+
+.leaflet-container .leaflet-control-container,
+.leaflet-container .leaflet-control-container * {
+    box-sizing: border-box;
+}
+
+.leaflet-container img,
+.leaflet-container img.leaflet-tile,
+.leaflet-container .leaflet-marker-icon,
+.leaflet-container .leaflet-marker-shadow {
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: initial !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.leaflet-container img.leaflet-tile {
+    position: absolute !important;
+    display: block !important;
+    width: 256px !important;
+    height: 256px !important;
+}
+
+.driver-route-map .leaflet-pane,
+.driver-route-map .leaflet-map-pane,
+.driver-route-map .leaflet-tile-pane,
+.driver-route-map .leaflet-overlay-pane,
+.driver-route-map .leaflet-marker-pane,
+.driver-route-map .leaflet-popup-pane {
+    max-width: none !important;
+}
+
+.leaflet-control-zoom a {
+    color: var(--driver-text) !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    border-radius: 12px !important;
 }
 
 .trago-map-pin {
-    background: transparent;
-    border: none;
+    background: transparent !important;
+    border: none !important;
     text-align: center;
 }
 
@@ -626,52 +917,369 @@
     justify-content: center;
     border-radius: 12px;
     color: #ffffff;
-    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
     border: 2px solid #ffffff;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.24);
 }
 
 .trago-map-pin small {
     display: block;
-    margin-top: 2px;
-    transform: translateX(-18px);
-    width: 74px;
-    color: #0f172a;
-    background: rgba(255,255,255,0.94);
-    border: 1px solid rgba(15, 23, 42, 0.10);
-    border-radius: 999px;
-    font-size: 0.68rem;
-    font-weight: 800;
-    line-height: 1;
+    width: 78px;
+    margin-top: 3px;
+    transform: translateX(-20px);
     padding: 4px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    background: rgba(255,255,255,0.95);
+    color: #0f172a;
+    font-size: 0.68rem;
+    font-weight: 850;
+    line-height: 1;
     box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
-.trago-map-pin-pickup span { background: #f59e0b; }
-.trago-map-pin-delivery span { background: #16a34a; }
-.trago-map-pin-driver span { background: #2563eb; }
+.trago-map-pin-pickup span { background: var(--driver-orange); }
+.trago-map-pin-delivery span { background: var(--driver-green); }
+.trago-map-pin-driver span { background: var(--driver-blue); }
 
-.leaflet-container {
-    font-family: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/* ---------- Modais do painel ---------- */
+.location-modal {
+    max-width: 520px;
 }
 
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
-    border-radius: 12px;
+.location-modal-body {
+    text-align: center;
 }
 
-@media (max-width: 768px) {
-    .driver-map-header {
+.location-icon {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 12px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: var(--driver-green-soft);
+    color: var(--driver-green);
+    font-size: 2rem;
+}
+
+.location-title {
+    margin: 0 0 8px;
+    color: var(--driver-text);
+    font-size: 1.2rem;
+}
+
+.location-copy,
+.privacy-line,
+.privacy-title,
+.location-warning p,
+.location-note {
+    color: var(--driver-muted);
+    line-height: 1.45;
+}
+
+.privacy-panel,
+.location-warning {
+    text-align: left;
+    margin: 12px 0;
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--driver-card-soft);
+    border: 1px solid var(--driver-border-soft);
+}
+
+.privacy-title {
+    margin: 0 0 8px;
+    font-weight: 850;
+    color: var(--driver-text);
+}
+
+.privacy-line {
+    margin: 6px 0;
+}
+
+.privacy-line i {
+    color: var(--driver-green);
+}
+
+.location-warning {
+    background: #fff7ed;
+    border-color: rgba(246, 162, 38, 0.35);
+}
+
+.location-warning p,
+.location-note {
+    margin: 0;
+}
+
+.location-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.location-note {
+    display: none;
+    margin-top: 12px;
+    font-weight: 750;
+}
+
+/* ---------- Responsivo ---------- */
+@media (max-width: 1180px) {
+    .driver-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .driver-side-panel {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .driver-route-summary-card {
+        grid-column: 1 / -1;
+    }
+
+    .action-card {
+        grid-column: span 1;
+    }
+}
+
+@media (max-width: 900px) {
+    .motorista-profile {
+        display: none;
+    }
+
+    .btn-mobile-driver-menu {
+        display: inline-flex;
+    }
+
+    .motorista-header,
+    .motorista-main {
+        width: min(100% - 20px, 1440px);
+    }
+
+    .driver-detail-topbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .driver-detail-topbar > div {
+        text-align: left;
+    }
+
+    .driver-map-header,
+    .driver-map-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .route-actions-inline {
+        justify-content: stretch;
+    }
+
+    .route-actions-inline .btn-mapa {
+        flex: 1 1 0;
+    }
+
+    .driver-map-stage {
+        height: 460px;
+        min-height: 460px;
+    }
+}
+
+@media (max-width: 680px) {
+    .content-section > .glass-card,
+    .driver-detail-card {
+        padding: 12px !important;
+    }
+
+    .driver-side-panel,
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .entrega-card-header {
         align-items: flex-start;
         flex-direction: column;
     }
 
-    .driver-route-map {
-        min-height: 360px;
-        height: 58vh;
+    .entrega-card-header span {
+        text-align: left;
     }
 
-    .route-actions-inline .btn-mapa {
-        flex: 1 1 100%;
-        justify-content: center;
+    .driver-map-stage {
+        height: 390px;
+        min-height: 390px;
+    }
+
+    .route-actions-inline {
+        flex-direction: column;
+    }
+
+    .route-actions-inline .btn-mapa,
+    .location-actions {
+        width: 100%;
+        grid-template-columns: 1fr;
+    }
+
+    .desktop-only {
+        display: none !important;
+    }
+}
+
+@media (max-width: 420px) {
+    .motorista-logo {
+        width: 104px;
+    }
+
+    .driver-map-stage {
+        height: 340px;
+        min-height: 340px;
+    }
+}
+
+
+/* ---------- Ajuste final: moradas compactas e mapa estável ---------- */
+.motorista-body .driver-route-summary-card,
+.motorista-body .driver-route-summary-card * {
+    box-sizing: border-box;
+}
+
+.motorista-body .route-point-card {
+    flex: none !important;
+}
+
+.motorista-body .driver-route-map.leaflet-container {
+    height: 100% !important;
+    width: 100% !important;
+}
+
+.motorista-body .leaflet-container img.leaflet-tile {
+    width: 256px !important;
+    height: 256px !important;
+}
+
+@media (max-width: 680px) {
+    .route-point-card {
+        grid-template-columns: 38px minmax(0, 1fr);
+        padding: 11px;
+    }
+
+    .route-point-card strong,
+    .route-address-title {
+        -webkit-line-clamp: 2;
+        font-size: 0.9rem;
+        line-height: 1.3;
+    }
+
+    .route-coords {
+        font-size: 0.74rem;
+    }
+}
+
+/* ---------- Correção premium: posição real do motorista no mapa ---------- */
+.motorista-body .driver-map-card,
+.motorista-body .driver-map-stage {
+    isolation: isolate;
+}
+
+.motorista-body .driver-map-header,
+.motorista-body .driver-map-footer {
+    position: relative;
+    z-index: 5;
+}
+
+.motorista-body .driver-route-map,
+.motorista-body .driver-route-map.leaflet-container {
+    z-index: 1 !important;
+}
+
+.motorista-body .driver-route-map .leaflet-control-container {
+    position: relative;
+    z-index: 4 !important;
+}
+
+.motorista-body .driver-route-map .leaflet-marker-pane {
+    z-index: 720 !important;
+}
+
+.motorista-body .driver-route-map .leaflet-popup-pane {
+    z-index: 760 !important;
+}
+
+.trago-driver-position-icon {
+    position: relative !important;
+    width: 72px !important;
+    height: 72px !important;
+    background: transparent !important;
+    border: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    pointer-events: auto;
+}
+
+.trago-driver-position-icon .trago-driver-position-pulse,
+.trago-driver-position-icon .trago-driver-position-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: block;
+    border-radius: 999px;
+    transform: translate(-50%, -50%);
+}
+
+.trago-driver-position-icon .trago-driver-position-pulse {
+    width: 54px;
+    height: 54px;
+    background: rgba(37, 99, 235, 0.16);
+    border: 2px solid rgba(37, 99, 235, 0.35);
+    animation: tragoDriverPulse 1.45s ease-out infinite;
+}
+
+.trago-driver-position-icon .trago-driver-position-dot {
+    width: 20px;
+    height: 20px;
+    background: #2563eb;
+    border: 4px solid #ffffff;
+    box-shadow: 0 12px 26px rgba(37, 99, 235, 0.42), 0 0 0 2px rgba(15, 23, 42, 0.12);
+}
+
+.trago-driver-position-icon small {
+    position: absolute;
+    left: 50%;
+    bottom: -2px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 46px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    color: #1d4ed8;
+    font-size: 0.68rem;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.16);
+}
+
+@keyframes tragoDriverPulse {
+    0% {
+        transform: translate(-50%, -50%) scale(0.62);
+        opacity: 0.95;
+    }
+    70% {
+        transform: translate(-50%, -50%) scale(1.18);
+        opacity: 0.12;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1.30);
+        opacity: 0;
+    }
+}
+
+@media (max-width: 680px) {
+    .trago-driver-position-icon small {
+        bottom: -6px;
     }
 }

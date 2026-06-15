@@ -122,7 +122,9 @@ function showDriverPage(pageId) {
         loadMyEarnings(); 
     }
     if (pageId === 'detalhe-entrega') {
-        window.TragoDriverMap?.invalidate?.();
+        requestAnimationFrame(() => window.TragoDriverMap?.invalidate?.());
+        setTimeout(() => window.TragoDriverMap?.invalidate?.(), 180);
+        setTimeout(() => window.TragoDriverMap?.invalidate?.(), 520);
     }
 }
 
@@ -237,6 +239,90 @@ async function loadMyEarnings() {
 
 /* --- Lógica de UI (Mostrar/Esconder Secções) --- */
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatCoord(coord) {
+    if (!coord || !Number.isFinite(Number(coord.lat)) || !Number.isFinite(Number(coord.lng))) return '';
+    return `${Number(coord.lat).toFixed(5)}, ${Number(coord.lng).toFixed(5)}`;
+}
+
+function compactPlaceName(value, fallback = 'Morada não informada') {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return fallback;
+
+    const ignored = [
+        /^moçambique$/i, /^mozambique$/i, /^cidade de maputo$/i, /^maputo cidade$/i,
+        /^zona sul$/i, /^zona norte$/i, /^zona centro$/i, /^região sul$/i,
+        /^distrito municipal/i, /^município/i, /^municipal/i, /^província/i,
+        /^\d{3,}[-–]?\d*$/i
+    ];
+
+    const cleaned = raw
+        .split(',')
+        .map(part => part.replace(/[“”"']/g, '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .filter(part => !ignored.some(rx => rx.test(part)))
+        .map(part => part.replace(/^Avenida\s+/i, 'Av. '));
+
+    const unique = [];
+    for (const part of cleaned) {
+        const normalized = part.toLowerCase();
+        if (!unique.some(item => item.toLowerCase() === normalized)) unique.push(part);
+    }
+
+    let selected = unique.slice(0, 3);
+    if (!selected.length) selected = raw.split(',').map(p => p.trim()).filter(Boolean).slice(0, 2);
+
+    let short = selected.join(' · ');
+    if (short.length > 72 && selected.length > 2) short = selected.slice(0, 2).join(' · ');
+    if (short.length > 72) short = `${short.slice(0, 69).trim()}…`;
+    return short || fallback;
+}
+
+function buildAddressTitle(fullAddress, fallback) {
+    const full = String(fullAddress || '').trim();
+    const compact = compactPlaceName(full, fallback);
+    const title = full ? ` title="${escapeHtml(full)}"` : '';
+    return `<strong class="route-address-title"${title}>${escapeHtml(compact)}</strong>`;
+}
+
+function buildDriverRouteSummary(order) {
+    const pickupRaw = order.pickup_address_text || order.pickup_address || '';
+    const deliveryRaw = order.address_text || order.delivery_address || '';
+    const pickupText = buildAddressTitle(pickupRaw, 'Ponto de recolha');
+    const deliveryText = buildAddressTitle(deliveryRaw, 'Ponto de entrega');
+    const distance = Number(order.route_distance_km || order.distance_km || 0);
+    const distanceHtml = Number.isFinite(distance) && distance > 0
+        ? `<div class="route-metric-pill"><span>Distância da rota</span><strong>${distance.toFixed(2)} km</strong></div>`
+        : '';
+
+    return `
+        <div class="route-point-card route-point-pickup">
+            <span class="route-marker-dot"><i class="fas fa-box-open"></i></span>
+            <div>
+                <small>Ponto de recolha</small>
+                ${pickupText}
+            </div>
+        </div>
+        <div class="route-connector-line" aria-hidden="true"></div>
+        <div class="route-point-card route-point-delivery">
+            <span class="route-marker-dot"><i class="fas fa-flag-checkered"></i></span>
+            <div>
+                <small>Ponto de entrega</small>
+                ${deliveryText}
+            </div>
+        </div>
+        ${distanceHtml}
+    `;
+}
+
 function fillDetalheEntrega(order) {
     const detalheSection = document.getElementById('detalhe-entrega');
     if (!detalheSection) return;
@@ -254,17 +340,16 @@ function fillDetalheEntrega(order) {
         noImg.classList.remove('hidden');
     }
 
-    document.getElementById('detalhe-cliente-nome').innerHTML = `<strong>Nome:</strong> ${order.client_name}`;
-    document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Telefone:</strong> ${order.client_phone1}`;
-    document.getElementById('detalhe-cliente-endereco').innerHTML = `<strong>Recolha:</strong> ${order.pickup_address_text || 'N/D'}<br><strong>Entrega:</strong> ${order.address_text || 'N/D'}${order.route_distance_km ? `<br><strong>Distância:</strong> ${Number(order.route_distance_km).toFixed(2)} km` : ''}`;
+    document.getElementById('detalhe-cliente-nome').innerHTML = `<strong>Nome:</strong> ${escapeHtml(order.client_name || '—')}`;
+    document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Telefone:</strong> ${escapeHtml(order.client_phone1 || '—')}`;
+    document.getElementById('detalhe-cliente-endereco').innerHTML = buildDriverRouteSummary(order);
     
-    // ===== PAYMENT METHOD (EXECUTA SEMPRE) =====
     const paymentMap = {
         cash: 'Dinheiro',
         mpesa: 'M-Pesa',
         emola: 'e-Mola',
         mkesh: 'mKesh',
-        bank_transfer: 'Transferencia bancaria'
+        bank_transfer: 'Transferência bancária'
     };
 
     const paymentEl = document
@@ -277,17 +362,19 @@ function fillDetalheEntrega(order) {
     const coordsP = document.getElementById('detalhe-cliente-coords');
     const pickupCoords = order.pickup_address_coords;
     const deliveryCoords = order.address_coords;
-    if (pickupCoords?.lat && deliveryCoords?.lat) {
-        coordsP.querySelector('span').innerText = `Recolha: ${Number(pickupCoords.lat).toFixed(5)}, ${Number(pickupCoords.lng).toFixed(5)} · Entrega: ${Number(deliveryCoords.lat).toFixed(5)}, ${Number(deliveryCoords.lng).toFixed(5)}`;
+    if (coordsP?.querySelector('span') && pickupCoords?.lat && deliveryCoords?.lat) {
+        coordsP.querySelector('span').innerHTML = `<span>Recolha: ${formatCoord(pickupCoords)}</span><span>Entrega: ${formatCoord(deliveryCoords)}</span>`;
         coordsP.classList.remove('hidden');
-    } else if (deliveryCoords?.lat) {
-        coordsP.querySelector('span').innerText = `Entrega: ${Number(deliveryCoords.lat).toFixed(5)}, ${Number(deliveryCoords.lng).toFixed(5)}`;
+    } else if (coordsP?.querySelector('span') && deliveryCoords?.lat) {
+        coordsP.querySelector('span').innerHTML = `<span>Entrega: ${formatCoord(deliveryCoords)}</span>`;
         coordsP.classList.remove('hidden');
-    } else {
+    } else if (coordsP) {
         coordsP.classList.add('hidden');
     }
 
-    window.TragoDriverMap?.renderOrderRoute?.(order);
+    requestAnimationFrame(() => {
+        window.TragoDriverMap?.renderOrderRoute?.(order);
+    });
 
 
     // --- Controlo dos botões consoante o ESTADO da encomenda ---
