@@ -149,23 +149,162 @@
     updateQuote();
   }
 
+  function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function getSuggestionTitle(place) {
+    const displayName = String(place?.display_name || '').trim();
+    return String(place?.name || displayName.split(',')[0] || 'Local encontrado').trim();
+  }
+
+  function getSuggestionAddress(place) {
+    return String(place?.display_name || '').trim();
+  }
+
+  function lockMobileSuggestionsScroll(locked) {
+    document.documentElement.classList.toggle('geo-suggestions-open', Boolean(locked));
+    document.body.classList.toggle('geo-suggestions-open', Boolean(locked));
+  }
+
+  function positionSuggestionsPanel(input, panel) {
+    if (!input || !panel || panel.classList.contains('hidden')) return;
+
+    if (isMobileViewport()) {
+      panel.classList.add('geo-suggestions-panel-mobile');
+      panel.style.left = '10px';
+      panel.style.right = '10px';
+      panel.style.top = 'auto';
+      panel.style.bottom = '10px';
+      panel.style.width = 'auto';
+      lockMobileSuggestionsScroll(true);
+      return;
+    }
+
+    const rect = input.getBoundingClientRect();
+    panel.classList.remove('geo-suggestions-panel-mobile');
+    panel.style.left = `${Math.max(12, rect.left)}px`;
+    panel.style.top = `${rect.bottom + 6}px`;
+    panel.style.bottom = 'auto';
+    panel.style.right = 'auto';
+    panel.style.width = `${Math.max(260, rect.width)}px`;
+    lockMobileSuggestionsScroll(false);
+  }
+
   function makeSuggestionsPanel(input) {
-    let panel = input.parentElement.querySelector('.geo-suggestions-panel');
+    const panelId = `geo-suggestions-${input.id || Math.random().toString(36).slice(2)}`;
+    let panel = document.getElementById(panelId);
+
     if (!panel) {
       panel = document.createElement('div');
+      panel.id = panelId;
       panel.className = 'geo-suggestions-panel hidden';
-      input.parentElement.appendChild(panel);
+      panel.setAttribute('role', 'listbox');
+      panel.setAttribute('aria-label', `Sugestões para ${input.labels?.[0]?.textContent || input.placeholder || 'morada'}`);
+      document.body.appendChild(panel);
     }
+
+    input.setAttribute('aria-controls', panelId);
+    input.setAttribute('aria-expanded', 'false');
     return panel;
   }
 
+  function showSuggestions(input, panel) {
+    if (!input || !panel) return;
+    panel.classList.remove('hidden');
+    input.setAttribute('aria-expanded', 'true');
+    positionSuggestionsPanel(input, panel);
+  }
+
   function hideSuggestions(input) {
-    const panel = input?.parentElement?.querySelector('.geo-suggestions-panel');
-    if (panel) panel.classList.add('hidden');
+    const panelId = input?.getAttribute('aria-controls');
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (panel) {
+      panel.classList.add('hidden');
+      panel.classList.remove('geo-suggestions-panel-mobile');
+    }
+    if (input) input.setAttribute('aria-expanded', 'false');
+
+    const anyOpen = document.querySelector('.geo-suggestions-panel:not(.hidden)');
+    if (!anyOpen) lockMobileSuggestionsScroll(false);
+  }
+
+  function hideAllSuggestions() {
+    document.querySelectorAll('.geo-suggestions-panel').forEach((panel) => {
+      panel.classList.add('hidden');
+      panel.classList.remove('geo-suggestions-panel-mobile');
+    });
+    document.querySelectorAll('[aria-controls^="geo-suggestions-"]').forEach((input) => {
+      input.setAttribute('aria-expanded', 'false');
+    });
+    lockMobileSuggestionsScroll(false);
+  }
+
+  function renderSuggestions(panel, input, kind, results) {
+    panel.innerHTML = '';
+
+    if (!Array.isArray(results) || !results.length) {
+      panel.innerHTML = '<div class="geo-suggestion-muted">Nenhuma sugestão encontrada.</div>';
+      showSuggestions(input, panel);
+      return;
+    }
+
+    if (isMobileViewport()) {
+      const header = document.createElement('div');
+      header.className = 'geo-suggestions-header';
+      header.innerHTML = '<strong>Seleccione uma morada</strong><button type="button" aria-label="Fechar sugestões">×</button>';
+      header.querySelector('button').addEventListener('click', () => hideSuggestions(input));
+      panel.appendChild(header);
+    }
+
+    const list = document.createElement('div');
+    list.className = 'geo-suggestions-list';
+
+    results.forEach((place) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'geo-suggestion-item';
+      item.setAttribute('role', 'option');
+      const title = escapeHtml(getSuggestionTitle(place));
+      const address = escapeHtml(getSuggestionAddress(place));
+      item.innerHTML = `<strong>${title}</strong><small>${address}</small>`;
+
+      const selectPlace = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setCoords(kind, { lat: Number(place.lat), lng: Number(place.lon) }, getSuggestionAddress(place));
+        hideSuggestions(input);
+      };
+
+      item.addEventListener('pointerdown', selectPlace);
+      item.addEventListener('click', selectPlace);
+      list.appendChild(item);
+    });
+
+    panel.appendChild(list);
+    showSuggestions(input, panel);
   }
 
   function attachNominatimFallback(input, kind) {
     const panel = makeSuggestionsPanel(input);
+
+    const reposition = () => positionSuggestionsPanel(input, panel);
+    window.addEventListener('resize', reposition, { passive: true });
+    window.addEventListener('orientationchange', () => setTimeout(reposition, 200), { passive: true });
+    window.addEventListener('scroll', reposition, true);
+
+    input.addEventListener('focus', () => {
+      if (panel.innerHTML.trim() && input.value.trim().length >= 3) showSuggestions(input, panel);
+    });
 
     input.addEventListener('input', () => {
       const query = input.value.trim();
@@ -174,52 +313,43 @@
 
       clearTimeout(state.debounceTimers[kind]);
       if (query.length < 3) {
-        panel.classList.add('hidden');
+        hideSuggestions(input);
         return;
       }
 
       state.debounceTimers[kind] = setTimeout(async () => {
         try {
           panel.innerHTML = '<div class="geo-suggestion-muted">A procurar locais...</div>';
-          panel.classList.remove('hidden');
+          showSuggestions(input, panel);
+
           const url = new URL('https://nominatim.openstreetmap.org/search');
           url.searchParams.set('format', 'jsonv2');
           url.searchParams.set('q', `${query}, Maputo, Moçambique`);
           url.searchParams.set('countrycodes', 'mz');
-          url.searchParams.set('limit', '6');
+          url.searchParams.set('limit', '7');
           url.searchParams.set('addressdetails', '1');
           url.searchParams.set('bounded', '0');
           url.searchParams.set('viewbox', '32.25,-25.70,32.85,-26.15');
 
           const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
           const results = await response.json();
-          panel.innerHTML = '';
-
-          if (!Array.isArray(results) || !results.length) {
-            panel.innerHTML = '<div class="geo-suggestion-muted">Nenhuma sugestão encontrada.</div>';
-            return;
-          }
-
-          results.forEach((place) => {
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'geo-suggestion-item';
-            item.innerHTML = `<strong>${place.name || place.display_name.split(',')[0]}</strong><small>${place.display_name}</small>`;
-            item.addEventListener('click', () => {
-              setCoords(kind, { lat: Number(place.lat), lng: Number(place.lon) }, place.display_name);
-              panel.classList.add('hidden');
-            });
-            panel.appendChild(item);
-          });
+          renderSuggestions(panel, input, kind, results);
         } catch (error) {
           console.warn('[TragoGeoPricing] Sugestões indisponíveis:', error.message || error);
           panel.innerHTML = '<div class="geo-suggestion-muted">Sugestões indisponíveis. Use o pin do mapa.</div>';
+          showSuggestions(input, panel);
         }
       }, 350);
     });
 
-    document.addEventListener('click', (event) => {
-      if (!input.parentElement.contains(event.target)) hideSuggestions(input);
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target;
+      if (target === input || panel.contains(target)) return;
+      hideSuggestions(input);
+    }, true);
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') hideSuggestions(input);
     });
   }
 

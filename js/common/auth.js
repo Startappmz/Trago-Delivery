@@ -190,15 +190,42 @@ function handle401Safely(role) {
 
 /**
  * Logout seguro.
+ * Para motorista, força offline no backend antes de limpar o token.
  */
-function handleLogout(role) {
-    if (role === 'admin') {
-        localStorage.removeItem('adminToken');
-        localStorage.removeItem('adminName');
-        window.location.href = 'login.html';
-    } else {
-        localStorage.removeItem('driverToken');
-        localStorage.removeItem('driverName');
-        window.location.href = 'login-motorista.html';
+let logoutInProgress = false;
+async function handleLogout(role) {
+    if (logoutInProgress) return;
+    logoutInProgress = true;
+
+    const token = getAuthToken(role);
+    const loginPage = role === 'admin' ? 'login.html' : 'login-motorista.html';
+
+    try {
+        if (role === 'driver') {
+            await Promise.race([
+                window.TragoDriverTracking?.shutdown?.({ keepalive: false }) || Promise.resolve(),
+                new Promise((resolve) => setTimeout(resolve, 1800))
+            ]);
+        }
+
+        if (token) {
+            await Promise.race([
+                fetch(`${API_URL}/api/auth/logout`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    keepalive: true
+                }).catch(() => null),
+                new Promise((resolve) => setTimeout(resolve, 1500))
+            ]);
+        }
+    } finally {
+        if (role === 'admin') {
+            localStorage.removeItem('adminToken');
+            localStorage.removeItem('adminName');
+        } else {
+            localStorage.removeItem('driverToken');
+            localStorage.removeItem('driverName');
+        }
+        window.location.replace(loginPage);
     }
 }

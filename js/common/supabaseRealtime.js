@@ -116,14 +116,15 @@
         };
     }
 
-    async function postRealtimeEndpoint(token, endpoint, payload) {
+    async function postRealtimeEndpoint(token, endpoint, payload, options = {}) {
         const response = await fetch(`${API_URL}/api/realtime/${endpoint}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(payload || {})
+            body: JSON.stringify(payload || {}),
+            keepalive: Boolean(options.keepalive)
         });
 
         if (!response.ok) {
@@ -140,11 +141,11 @@
         sendDriverLocation: function (token, payload) {
             return postRealtimeEndpoint(token, 'driver-location', payload);
         },
-        setDriverOnline: function (token) {
-            return postRealtimeEndpoint(token, 'driver-online', {});
+        setDriverOnline: function (token, options) {
+            return postRealtimeEndpoint(token, 'driver-online', {}, options);
         },
-        setDriverOffline: function (token) {
-            return postRealtimeEndpoint(token, 'driver-offline', {});
+        setDriverOffline: function (token, options) {
+            return postRealtimeEndpoint(token, 'driver-offline', {}, options);
         }
     };
 })();

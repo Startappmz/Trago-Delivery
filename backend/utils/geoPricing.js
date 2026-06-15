@@ -25,62 +25,81 @@ function haversineKm(origin, destination) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-async function quoteWithOpenRouteService(origin, destination) {
+async function fetchOpenRouteService(origin, destination) {
   const apiKey = process.env.TRAGO_ORS_API_KEY;
   if (!apiKey || typeof fetch !== 'function') return null;
 
   const url = new URL('https://api.openrouteservice.org/v2/directions/driving-car');
   url.searchParams.set('api_key', apiKey);
-  // OpenRouteService recebe coordenadas no formato longitude,latitude.
   url.searchParams.set('start', `${Number(origin.lng)},${Number(origin.lat)}`);
   url.searchParams.set('end', `${Number(destination.lng)},${Number(destination.lat)}`);
 
   const response = await fetch(url.toString(), {
     method: 'GET',
-    headers: {
-      Accept: 'application/json, application/geo+json'
-    }
+    headers: { Accept: 'application/json, application/geo+json' }
   });
 
   if (!response.ok) return null;
   const data = await response.json();
-  const summary = data?.features?.[0]?.properties?.summary;
+  const feature = data?.features?.[0];
+  const summary = feature?.properties?.summary;
   if (!summary || !Number.isFinite(Number(summary.distance))) return null;
 
   return {
+    geometry: feature.geometry,
     distance_km: Number(summary.distance) / 1000,
     duration_min: Number.isFinite(Number(summary.duration)) ? Math.max(1, Math.round(Number(summary.duration) / 60)) : null,
     source: 'openrouteservice'
   };
 }
+
 async function buildRouteQuote(origin, destination) {
+  const route = await buildRouteGeometry(origin, destination);
+  return {
+    distance_km: route.distance_km,
+    duration_min: route.duration_min,
+    delivery_fee: Number(Number(route.delivery_fee).toFixed(2)),
+    source: route.source,
+    policy: PRICING_POLICY
+  };
+}
+
+async function buildRouteGeometry(origin, destination) {
   if (!isValidCoordinate(origin) || !isValidCoordinate(destination)) {
     throw new Error('Coordenadas de recolha e entrega são obrigatórias.');
   }
 
-  let quote = null;
+  let route = null;
   try {
-    quote = await quoteWithOpenRouteService(origin, destination);
+    route = await fetchOpenRouteService(origin, destination);
   } catch (_error) {
-    quote = null;
+    route = null;
   }
 
-  if (!quote) {
+  if (!route || !route.geometry) {
     const distanceKm = haversineKm(origin, destination);
-    quote = {
+    route = {
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [Number(origin.lng), Number(origin.lat)],
+          [Number(destination.lng), Number(destination.lat)]
+        ]
+      },
       distance_km: distanceKm,
       duration_min: Math.max(1, Math.round((distanceKm / 35) * 60)),
       source: 'haversine_fallback'
     };
   }
 
-  const deliveryFee = calculateDeliveryFee(quote.distance_km);
   return {
-    distance_km: Number(Number(quote.distance_km).toFixed(2)),
-    duration_min: quote.duration_min,
-    delivery_fee: Number(Number(deliveryFee).toFixed(2)),
-    source: quote.source,
-    policy: PRICING_POLICY
+    origin,
+    destination,
+    geometry: route.geometry,
+    distance_km: Number(Number(route.distance_km).toFixed(2)),
+    duration_min: route.duration_min,
+    delivery_fee: calculateDeliveryFee(route.distance_km),
+    source: route.source
   };
 }
 
@@ -89,5 +108,6 @@ module.exports = {
   calculateDeliveryFee,
   haversineKm,
   buildRouteQuote,
+  buildRouteGeometry,
   isValidCoordinate
 };

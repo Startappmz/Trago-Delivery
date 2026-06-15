@@ -1,435 +1,314 @@
 /*
- * Ficheiro: js/driver/driverTracking.js
- * VERSÃO OBRIGATÓRIA - Localização necessária para uso do sistema
+ * Trago Delivery · Tracking do motorista
+ * Fluxo corrigido:
+ * - A permissão de localização é pedida de forma clara e controlada.
+ * - O motorista só fica online depois da primeira coordenada válida.
+ * - Logout/descarregamento da página força estado offline no Supabase.
+ * - Cada actualização de GPS alimenta o Realtime do admin e o mapa interno do motorista.
  */
-
 let socket = null;
 let locationWatchId = null;
+let heartbeatTimer = null;
 let locationPermissionDenied = false;
 let locationRetryCount = 0;
+let driverRealtimeSubscription = null;
+let driverOnlineConfirmed = false;
+let offlineInProgress = false;
+
 const MAX_RETRIES = 3;
+const HEARTBEAT_INTERVAL_MS = 30000;
 
-// Criamos o objeto de Áudio uma vez
-const notificationSound = new Audio('https://www.myinstants.com/en/instant/oplata-27021/?utm_source=copy&utm_medium=share');
-notificationSound.volume = 0.5;
-
-// Esta variável controla se o browser nos deu permissão de áudio
+const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+notificationSound.volume = 0.45;
 let audioUnblocked = false;
 
-/**
- * Função dedicada para tocar o som.
- */
+function getDriverTokenSafe() {
+    return typeof getAuthToken === 'function' ? getAuthToken('driver') : localStorage.getItem('driverToken');
+}
+
 function playNotificationSound() {
     const playPromise = notificationSound.play();
-    
     if (playPromise !== undefined) {
         playPromise.then(() => {
             audioUnblocked = true;
-        }).catch(error => {
-            console.warn("Áudio bloqueado pelo browser. Esperando interação do utilizador.");
+        }).catch(() => {
             audioUnblocked = false;
         });
     }
 }
 
-/**
- * Esta função é chamada no PRIMEIRO clique do utilizador
- * em qualquer sítio, para "acordar" o áudio.
- */
 function unlockAudio() {
-    if (!audioUnblocked) {
-        console.log("Tentativa de desbloquear o áudio com interação...");
-        notificationSound.muted = true;
-        notificationSound.play().then(() => {
-            notificationSound.muted = false;
-            audioUnblocked = true;
-            console.log("Áudio desbloqueado com sucesso.");
-        }).catch(e => console.error("Desbloqueio de áudio falhou:", e));
-    }
+    if (audioUnblocked) return;
+    notificationSound.muted = true;
+    notificationSound.play().then(() => {
+        notificationSound.muted = false;
+        audioUnblocked = true;
+    }).catch(() => {
+        notificationSound.muted = false;
+    });
 }
 
-/**
- * Mostra o modal de permissão de localização - VERSÃO OBRIGATÓRIA
- */
+function emitDriverPosition(position) {
+    document.dispatchEvent(new CustomEvent('driver_location_updated', {
+        detail: position
+    }));
+}
+
+function updateLocationNote(html, color = 'var(--danger)') {
+    const note = document.getElementById('location-permission-note');
+    if (!note) return;
+    note.style.display = 'block';
+    note.style.color = color;
+    note.innerHTML = html;
+}
+
+function hideLocationModal() {
+    document.getElementById('location-permission-modal')?.classList.add('hidden');
+}
+
 function showLocationPermissionModal() {
     const modal = document.getElementById('location-permission-modal');
     if (!modal) {
-        console.error('Modal de permissão de localização não encontrado');
-        // Fallback para o prompt nativo do browser
         requestLocationPermission();
         return;
     }
 
     modal.classList.remove('hidden');
-    
-    // Esconder a nota de "mais tarde" inicialmente
     const note = document.getElementById('location-permission-note');
     if (note) note.style.display = 'none';
 
-    // Remover botão de fechar se existir (não queremos que feche)
     const closeBtn = document.getElementById('close-location-modal');
-    if (closeBtn) {
-        closeBtn.style.display = 'none';
-    }
+    if (closeBtn) closeBtn.style.display = 'none';
 
-    // Configurar eventos (remover listeners antigos para evitar duplicação)
     const allowBtn = document.getElementById('allow-location-btn');
     const denyBtn = document.getElementById('deny-location-btn');
+    if (!allowBtn || !denyBtn) return;
 
     const newAllowBtn = allowBtn.cloneNode(true);
     const newDenyBtn = denyBtn.cloneNode(true);
-
     allowBtn.parentNode.replaceChild(newAllowBtn, allowBtn);
     denyBtn.parentNode.replaceChild(newDenyBtn, denyBtn);
 
     newAllowBtn.addEventListener('click', () => {
-        modal.classList.add('hidden');
         requestLocationPermission();
     });
 
     newDenyBtn.addEventListener('click', () => {
-        // Não permite negar - mostra aviso e mantém modal
+        updateLocationNote('<i class="fas fa-exclamation-triangle"></i> A localização é obrigatória para receber entregas. Clique em “Permitir Localização” e aceite a autorização do navegador.');
         if (typeof showCustomAlert === 'function') {
-            showCustomAlert(
-                'Localização Obrigatória',
-                'A localização é necessária para utilizar o sistema de entregas. Por favor, permita o acesso à sua localização.',
-                'error'
-            );
-        }
-        
-        // Mostrar nota no modal
-        const note = document.getElementById('location-permission-note');
-        if (note) {
-            note.style.display = 'block';
-            note.style.color = 'var(--danger)';
-            note.innerHTML = '<i class="fas fa-exclamation-triangle"></i> A localização é obrigatória para continuar.';
+            showCustomAlert('Localização obrigatória', 'Sem GPS activo o motorista fica offline e não pode receber entregas.', 'error');
         }
     });
 }
 
-/**
- * Solicita permissão de localização ao utilizador - VERSÃO OBRIGATÓRIA
- */
-function requestLocationPermission() {
-    if (!navigator.geolocation) {
-        console.error('Geolocalização não é suportada neste browser.');
-        if (typeof showCustomAlert === 'function') {
-            showCustomAlert(
-                'Erro de GPS',
-                'O seu dispositivo não suporta geolocalização. Não é possível utilizar o sistema de entregas.',
-                'error'
-            );
-        }
-        
-        // Redirecionar para logout após 3 segundos
-        setTimeout(() => {
-            if (typeof handleLogout === 'function') {
-                handleLogout('driver');
-            }
-        }, 3000);
-        return;
-    }
-
-    console.log('Solicitando permissão de localização...');
-
-    // Primeiro, verificamos se já temos permissão
-    if (navigator.permissions) {
-        navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
-            console.log('Estado da permissão de geolocalização:', permissionStatus.state);
-
-            if (permissionStatus.state === 'granted') {
-                // Já tem permissão, iniciar tracking
-                startLocationTracking();
-            } else if (permissionStatus.state === 'prompt') {
-                // Nunca perguntou, vamos pedir
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        // Permissão concedida
-                        console.log('Permissão de localização concedida');
-                        startLocationTracking();
-                        
-                        if (typeof showCustomAlert === 'function') {
-                            showCustomAlert(
-                                'Localização Ativada',
-                                'A sua localização está a ser partilhada com o administrador. Obrigado!',
-                                'success'
-                            );
-                        }
-                    },
-                    (error) => {
-                        // Permissão negada ou erro
-                        handleLocationError(error, true);
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 15000,
-                        maximumAge: 0
-                    }
-                );
-            } else if (permissionStatus.state === 'denied') {
-                // Permissão negada anteriormente
-                locationPermissionDenied = true;
-                
-                if (typeof showCustomAlert === 'function') {
-                    showCustomAlert(
-                        'Localização Bloqueada',
-                        'A localização está bloqueada no seu dispositivo. Para utilizar o sistema, ative nas configurações.',
-                        'error',
-                        8000
-                    );
-                }
-                
-                // Mostrar modal novamente com instruções
-                const modal = document.getElementById('location-permission-modal');
-                if (modal) {
-                    modal.classList.remove('hidden');
-                    const note = document.getElementById('location-permission-note');
-                    if (note) {
-                        note.style.display = 'block';
-                        note.style.color = 'var(--danger)';
-                        note.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Aceda às configurações do seu dispositivo para ativar a localização.';
-                    }
-                }
-            }
-
-            // Listener para mudanças no estado da permissão
-            permissionStatus.addEventListener('change', () => {
-                console.log('Estado da permissão de localização alterado para:', permissionStatus.state);
-                if (permissionStatus.state === 'granted' && locationPermissionDenied) {
-                    // Se o utilizador ativou manualmente, reiniciar tracking
-                    locationPermissionDenied = false;
-                    startLocationTracking();
-                    
-                    // Fechar modal se estiver aberto
-                    const modal = document.getElementById('location-permission-modal');
-                    if (modal) {
-                        modal.classList.add('hidden');
-                    }
-                }
-            });
-        }).catch((error) => {
-            console.warn('API permissions não suportada, a usar método tradicional');
-            // Fallback para browsers que não suportam Permissions API
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    console.log('Permissão de localização concedida');
-                    startLocationTracking();
-                },
-                (error) => handleLocationError(error, true),
-                {
-                    enableHighAccuracy: true,
-                    timeout: 15000,
-                    maximumAge: 0
-                }
-            );
-        });
-    } else {
-        // Browser não suporta Permissions API
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                console.log('Permissão de localização concedida');
-                startLocationTracking();
-            },
-            (error) => handleLocationError(error, true),
-            {
-                enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 0
-            }
-        );
+async function ensureDriverOnline() {
+    const token = getDriverTokenSafe();
+    if (!token || !window.TragoRealtime?.setDriverOnline) return;
+    try {
+        await window.TragoRealtime.setDriverOnline(token);
+        driverOnlineConfirmed = true;
+    } catch (error) {
+        console.warn('Não foi possível marcar motorista como online:', error);
     }
 }
 
-/**
- * Trata erros de localização - VERSÃO OBRIGATÓRIA
- */
-function handleLocationError(error, isRequired = false) {
-    console.error("Erro ao obter localização:", error.message);
-    
-    let errorMessage = '';
-    let alertType = 'error';
-    
-    switch(error.code) {
-        case error.PERMISSION_DENIED:
-            errorMessage = 'Permissão de localização negada. A localização é OBRIGATÓRIA para utilizar o sistema. Ative nas configurações do seu dispositivo.';
-            locationPermissionDenied = true;
-            break;
-        case error.POSITION_UNAVAILABLE:
-            errorMessage = 'Informação de localização indisponível. Verifique o sinal GPS e tente novamente.';
-            locationRetryCount++;
-            break;
-        case error.TIMEOUT:
-            errorMessage = 'Tempo limite excedido ao obter localização. A tentar novamente...';
-            locationRetryCount++;
-            break;
-        default:
-            errorMessage = 'Erro desconhecido ao obter localização.';
-            locationRetryCount++;
+function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(() => {
+        if (!driverOnlineConfirmed) return;
+        const token = getDriverTokenSafe();
+        if (!token) return;
+        window.TragoRealtime?.setDriverOnline?.(token).catch((error) => {
+            console.warn('Heartbeat online falhou:', error);
+        });
+    }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+}
+
+function requestLocationPermission() {
+    if (!navigator.geolocation) {
+        updateLocationNote('<i class="fas fa-times-circle"></i> Este dispositivo/navegador não suporta geolocalização.');
+        if (typeof showCustomAlert === 'function') {
+            showCustomAlert('GPS indisponível', 'O dispositivo não suporta geolocalização. Não é possível iniciar turno.', 'error');
+        }
+        markDriverOffline({ keepalive: false });
+        return;
     }
 
-    // Tentar novamente se não for permissão negada e não excedeu tentativas
-    if (error.code !== error.PERMISSION_DENIED && locationRetryCount < MAX_RETRIES) {
-        console.log(`Tentativa ${locationRetryCount} de ${MAX_RETRIES}...`);
-        setTimeout(() => {
-            requestLocationPermission();
-        }, 3000);
-    } else if (error.code === error.PERMISSION_DENIED) {
-        // Mostrar modal novamente com mensagem de obrigatoriedade
-        const modal = document.getElementById('location-permission-modal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            const note = document.getElementById('location-permission-note');
-            if (note) {
-                note.style.display = 'block';
-                note.style.color = 'var(--danger)';
-                note.innerHTML = '<i class="fas fa-exclamation-triangle"></i> PERMISSÃO NEGADA. A localização é OBRIGATÓRIA. Ative nas configurações.';
+    if (navigator.permissions?.query) {
+        navigator.permissions.query({ name: 'geolocation' }).then((permissionStatus) => {
+            if (permissionStatus.state === 'granted') {
+                startLocationTracking();
+                return;
             }
-        }
-        
-        // Se atingiu o máximo de tentativas e ainda sem permissão, fazer logout após aviso
-        if (locationRetryCount >= MAX_RETRIES) {
-            setTimeout(() => {
-                if (typeof handleLogout === 'function') {
-                    handleLogout('driver');
+
+            if (permissionStatus.state === 'denied') {
+                locationPermissionDenied = true;
+                markDriverOffline({ keepalive: false });
+                updateLocationNote('<i class="fas fa-ban"></i> A localização está bloqueada. Abra as permissões do navegador para este site e active “Localização”.');
+                if (typeof showCustomAlert === 'function') {
+                    showCustomAlert('Localização bloqueada', 'Active a localização nas permissões do navegador e clique em “Reativar Partilha de Localização”.', 'error', 8000);
                 }
-            }, 5000);
-        }
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                () => startLocationTracking(),
+                (error) => handleLocationError(error, true),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+
+            permissionStatus.onchange = () => {
+                if (permissionStatus.state === 'granted') {
+                    locationPermissionDenied = false;
+                    startLocationTracking();
+                    hideLocationModal();
+                }
+            };
+        }).catch(() => {
+            navigator.geolocation.getCurrentPosition(
+                () => startLocationTracking(),
+                (error) => handleLocationError(error, true),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        });
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        () => startLocationTracking(),
+        (error) => handleLocationError(error, true),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+}
+
+function handleLocationError(error, isRequired = false) {
+    console.error('Erro ao obter localização:', error?.message || error);
+    let errorMessage = 'Erro desconhecido ao obter localização.';
+
+    if (error?.code === error.PERMISSION_DENIED) {
+        locationPermissionDenied = true;
+        errorMessage = 'Permissão de localização negada. Active a localização no navegador para iniciar o turno.';
+        markDriverOffline({ keepalive: false });
+        showLocationPermissionModal();
+        updateLocationNote('<i class="fas fa-exclamation-triangle"></i> Permissão negada. O motorista permanece offline até a localização ser permitida.');
+    } else if (error?.code === error.POSITION_UNAVAILABLE) {
+        errorMessage = 'GPS indisponível. Verifique se a localização do dispositivo está ligada.';
+        locationRetryCount += 1;
+    } else if (error?.code === error.TIMEOUT) {
+        errorMessage = 'Tempo limite excedido ao obter localização. A tentar novamente...';
+        locationRetryCount += 1;
+    }
+
+    if (isRequired && error?.code !== error.PERMISSION_DENIED && locationRetryCount < MAX_RETRIES) {
+        setTimeout(() => requestLocationPermission(), 3000);
     }
 
     if (typeof showCustomAlert === 'function') {
-        showCustomAlert('Erro de Localização - OBRIGATÓRIA', errorMessage, alertType, 6000);
+        showCustomAlert('Localização', errorMessage, 'error', 6500);
     }
 }
 
 function connectDriverSocket() {
-    const token = getAuthToken('driver');
+    const token = getDriverTokenSafe();
     if (!token) {
-        console.error('Não foi possível conectar o Realtime: Token do motorista não encontrado.');
+        console.error('Token do motorista não encontrado. Realtime não iniciado.');
         return;
     }
 
     function handleDriverRealtimeEvent(event, data = {}) {
         if (event === 'nova_entrega_atribuida') {
-            console.log('Nova entrega recebida:', data);
-
             playNotificationSound();
-
             if (typeof showCustomAlert === 'function') {
-                showCustomAlert(
-                    'Nova Entrega!',
-                    `Novo pedido de ${data.clientName} (${window.SERVICE_NAMES ? window.SERVICE_NAMES[data.serviceType] : data.serviceType || 'Serviço'}).`,
-                    'success'
-                );
+                showCustomAlert('Nova Entrega!', `Novo pedido de ${data.clientName || 'cliente'}.`, 'success');
             }
-
             document.dispatchEvent(new Event('nova_entrega'));
             return;
         }
 
         if (event === 'entrega_cancelada') {
-            console.log('Entrega foi reatribuída/cancelada:', data);
-
             if (typeof showCustomAlert === 'function') {
-                showCustomAlert(
-                    'Entrega Reatribuída',
-                    `O pedido #${data.orderId ? data.orderId.slice(-6) : ''} foi reatribuído a outro motorista.`,
-                    'info'
-                );
+                showCustomAlert('Entrega Reatribuída', `O pedido #${data.orderId ? data.orderId.slice(-6) : ''} foi reatribuído/cancelado.`, 'info');
             }
-
             document.dispatchEvent(new Event('nova_entrega'));
             return;
         }
-
-        console.log('[TragoRealtime] Evento motorista recebido:', event, data);
     }
 
-    const subscription = window.TragoRealtime?.connectDriverRealtime({
+    driverRealtimeSubscription = window.TragoRealtime?.connectDriverRealtime({
         token,
         onEvent: handleDriverRealtimeEvent,
         onReady: () => {
-            console.log('Motorista conectado ao Supabase Realtime.');
-            window.TragoRealtime?.setDriverOnline(token).catch((error) => {
-                console.warn('Não foi possível marcar motorista como online:', error);
-            });
-
-            setTimeout(() => {
-                showLocationPermissionModal();
-            }, 1000);
-
+            console.log('Motorista ligado ao canal Realtime. Aguardando GPS para ficar online.');
+            showLocationPermissionModal();
             document.body.addEventListener('click', unlockAudio, { once: true });
             document.body.addEventListener('touchstart', unlockAudio, { once: true });
         }
     });
 
-    // Interface mínima para manter compatibilidade com o código antigo que fazia socket.emit().
     socket = {
-        connected: Boolean(subscription),
+        connected: Boolean(driverRealtimeSubscription),
         emit(event, payload) {
-            if (event === 'driver_location_update') {
-                return window.TragoRealtime?.sendDriverLocation(token, payload).catch((error) => {
-                    console.warn('Falha ao enviar localização via Supabase Realtime:', error);
-                });
-            }
+            if (event !== 'driver_location_update') return undefined;
+            return window.TragoRealtime?.sendDriverLocation(token, payload).catch((error) => {
+                console.warn('Falha ao enviar localização:', error);
+            });
         },
         disconnect() {
-            subscription?.unsubscribe?.();
-            window.TragoRealtime?.setDriverOffline(token).catch(() => {});
+            driverRealtimeSubscription?.unsubscribe?.();
+            driverRealtimeSubscription = null;
+            socket.connected = false;
         }
     };
-
-    window.addEventListener('beforeunload', () => {
-        window.TragoRealtime?.setDriverOffline(token).catch(() => {});
-    });
 }
 
 function startLocationTracking() {
-    // Parar tracking anterior se existir
     stopLocationTracking();
 
     if (!navigator.geolocation) {
-        console.error('Geolocalização não é suportada neste browser.');
+        handleLocationError({ code: 0, message: 'Geolocalização não suportada.' }, true);
         return;
     }
 
-    console.log('Iniciando rastreamento de localização do motorista...');
+    hideLocationModal();
+    locationPermissionDenied = false;
+    locationRetryCount = 0;
 
     locationWatchId = navigator.geolocation.watchPosition(
-        (position) => {
+        async (position) => {
             const { latitude, longitude, accuracy, speed } = position.coords;
-            
-            // Log para debug
-            console.log(`Posição atualizada: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (precisão: ${accuracy}m)`);
-            
-            if (socket && socket.connected) {
-                socket.emit('driver_location_update', { 
-                    lat: latitude, 
-                    lng: longitude,
-                    accuracy: accuracy,
-                    speed: speed,
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                console.warn('Socket não está conectado. Posição não enviada.');
+            const payload = {
+                lat: latitude,
+                lng: longitude,
+                accuracy,
+                speed,
+                timestamp: new Date().toISOString()
+            };
+
+            emitDriverPosition(payload);
+
+            if (!driverOnlineConfirmed) {
+                await ensureDriverOnline();
+                startHeartbeat();
             }
 
-            // Reset contador de tentativas quando consegue posição
-            locationRetryCount = 0;
-            
-            // Se o modal estiver aberto, fechar
-            const modal = document.getElementById('location-permission-modal');
-            if (modal && !modal.classList.contains('hidden')) {
-                modal.classList.add('hidden');
+            if (socket?.connected) {
+                socket.emit('driver_location_update', payload);
             }
+
+            locationRetryCount = 0;
         },
-        (error) => {
-            handleLocationError(error, true);
-        },
+        (error) => handleLocationError(error, true),
         {
             enableHighAccuracy: true,
-            timeout: 30000,
-            maximumAge: 10000,
-            distanceFilter: 10
+            timeout: 25000,
+            maximumAge: 8000
         }
     );
 }
@@ -438,17 +317,60 @@ function stopLocationTracking() {
     if (locationWatchId !== null) {
         navigator.geolocation.clearWatch(locationWatchId);
         locationWatchId = null;
-        console.log('Rastreamento de localização parado.');
     }
 }
 
-// Função para reiniciar tracking manualmente
+async function markDriverOffline(options = {}) {
+    const token = getDriverTokenSafe();
+    if (!token || offlineInProgress) return;
+
+    offlineInProgress = true;
+    driverOnlineConfirmed = false;
+    stopHeartbeat();
+
+    try {
+        await window.TragoRealtime?.setDriverOffline?.(token, { keepalive: Boolean(options.keepalive) });
+    } catch (error) {
+        console.warn('Falha ao marcar motorista offline:', error);
+    } finally {
+        offlineInProgress = false;
+    }
+}
+
+async function shutdownDriverTracking(options = {}) {
+    stopLocationTracking();
+    stopHeartbeat();
+    await markDriverOffline(options);
+    if (driverRealtimeSubscription?.unsubscribe) {
+        try { driverRealtimeSubscription.unsubscribe(); } catch (_) {}
+    }
+    driverRealtimeSubscription = null;
+    if (socket) socket.connected = false;
+}
+
 function restartLocationTracking() {
     locationPermissionDenied = false;
     locationRetryCount = 0;
-    stopLocationTracking();
     showLocationPermissionModal();
 }
 
-// Exportar funções para uso global
+window.addEventListener('pagehide', () => {
+    shutdownDriverTracking({ keepalive: true });
+});
+
+window.addEventListener('beforeunload', () => {
+    shutdownDriverTracking({ keepalive: true });
+});
+
 window.restartLocationTracking = restartLocationTracking;
+window.startLocationTracking = startLocationTracking;
+window.stopLocationTracking = stopLocationTracking;
+window.showLocationPermissionModal = showLocationPermissionModal;
+window.requestLocationPermission = requestLocationPermission;
+window.TragoDriverTracking = {
+    shutdown: shutdownDriverTracking,
+    markOffline: markDriverOffline,
+    restart: restartLocationTracking,
+    isOnline: () => driverOnlineConfirmed,
+    isTracking: () => locationWatchId !== null
+};

@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQhKp5lT4Rpj8G+9A9Ck/OfuPD0Y7mM=" crossorigin="">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="global.css">
@@ -76,6 +77,7 @@
                 <div id="entregas-container">
                     <!-- Os cards serão inseridos aqui pelo JavaScript -->
                 </div>
+
             </div>
         </section>
 
@@ -107,17 +109,23 @@
                         </p>
                     </div>
 
-                    <!-- Destino -->
-                    <div class="detalhes-bloco">
-                        <h3><i class="fas fa-map-marker-alt"></i> Destino</h3>
-                        <p id="detalhe-cliente-endereco"><strong>Endereço:</strong> ...</p>
+                    <!-- Rota -->
+                    <div class="detalhes-bloco route-summary-card">
+                        <h3><i class="fas fa-route"></i> Rota da Entrega</h3>
+                        <p id="detalhe-cliente-endereco"><strong>Recolha:</strong> ...<br><strong>Entrega:</strong> ...</p>
                         <p id="detalhe-cliente-coords" class="hidden">
                             <strong>Coordenadas:</strong> <span>...</span>
                         </p>
-                        <a href="#" target="_blank" class="btn-mapa hidden" id="btn-google-maps">
-                            <i class="fas fa-map-location-dot"></i>
-                            <span>Abrir no Google Maps</span>
-                        </a>
+                        <div class="route-actions-inline">
+                            <button type="button" class="btn-mapa" id="btn-centralizar-rota">
+                                <i class="fas fa-crosshairs"></i>
+                                <span>Centralizar Rota</span>
+                            </button>
+                            <button type="button" class="btn-mapa btn-mapa-secondary" id="btn-minha-posicao">
+                                <i class="fas fa-location-arrow"></i>
+                                <span>Minha Posição</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Ações -->
@@ -142,6 +150,21 @@
                                 <span>Finalizar Entrega</span>
                             </button>
                         </form>
+                    </div>
+                </div>
+                <div class="driver-map-shell">
+                    <div class="driver-map-header">
+                        <div>
+                            <h3><i class="fas fa-map-location-dot"></i> Mapa interno da rota</h3>
+                            <p id="driver-map-status">Aguardando dados da rota...</p>
+                        </div>
+                        <span class="driver-map-badge" id="driver-location-state">GPS inativo</span>
+                    </div>
+                    <div id="driver-route-map" class="driver-route-map" aria-label="Mapa interno com ponto de recolha, entrega e posição do motorista"></div>
+                    <div class="driver-map-legend">
+                        <span><i class="legend-dot legend-pickup"></i> Recolha</span>
+                        <span><i class="legend-dot legend-delivery"></i> Entrega</span>
+                        <span><i class="legend-dot legend-driver"></i> Motorista</span>
                     </div>
                 </div>
             </div>
@@ -259,7 +282,7 @@
     </main>
 
     <!-- MODAL DE PERMISSÃO DE LOCALIZAÇÃO - VERSÃO OBRIGATÓRIA -->
-    <div id="location-permission-modal" class="modal-backdrop">
+    <div id="location-permission-modal" class="modal-backdrop hidden">
         <div class="modal-content location-modal">
             <div class="modal-header">
                 <h3><i class="fas fa-map-marker-alt"></i> LOCALIZAÇÃO OBRIGATÓRIA</h3>
@@ -340,12 +363,14 @@
     </div>
     
     <!-- Scripts - ORDEM CORRETA -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="templatemo-glass-admin-script.js"></script>
     <script src="js/common/supabaseConfig.js"></script>
     <script src="js/common/api.js"></script>
     <script src="js/common/auth.js"></script>
     <script src="js/common/ui.js"></script>
     <script src="js/common/supabaseRealtime.js"></script>
+    <script src="js/driver/driverMap.js"></script>
     <script src="js/driver/driverTracking.js"></script>
     <script src="js/driver/driver.js"></script>
 </body>

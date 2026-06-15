@@ -7,7 +7,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth('driver');
     connectDriverSocket();
-    startLocationTracking();
     attachDriverEventListeners();
     
     // Carrega a página inicial
@@ -121,6 +120,9 @@ function showDriverPage(pageId) {
     }
     if (pageId === 'meus-ganhos') {
         loadMyEarnings(); 
+    }
+    if (pageId === 'detalhe-entrega') {
+        window.TragoDriverMap?.invalidate?.();
     }
 }
 
@@ -273,16 +275,19 @@ function fillDetalheEntrega(order) {
     }
 
     const coordsP = document.getElementById('detalhe-cliente-coords');
-    const mapButton = document.getElementById('btn-google-maps');
-    if (order.address_coords && order.address_coords.lat) {
-        coordsP.querySelector('span').innerText = `${order.address_coords.lat.toFixed(5)}, ${order.address_coords.lng.toFixed(5)}`;
+    const pickupCoords = order.pickup_address_coords;
+    const deliveryCoords = order.address_coords;
+    if (pickupCoords?.lat && deliveryCoords?.lat) {
+        coordsP.querySelector('span').innerText = `Recolha: ${Number(pickupCoords.lat).toFixed(5)}, ${Number(pickupCoords.lng).toFixed(5)} · Entrega: ${Number(deliveryCoords.lat).toFixed(5)}, ${Number(deliveryCoords.lng).toFixed(5)}`;
         coordsP.classList.remove('hidden');
-        mapButton.href = `https://www.google.com/maps?q=${order.address_coords.lat},${order.address_coords.lng}`;
-        mapButton.classList.remove('hidden');
+    } else if (deliveryCoords?.lat) {
+        coordsP.querySelector('span').innerText = `Entrega: ${Number(deliveryCoords.lat).toFixed(5)}, ${Number(deliveryCoords.lng).toFixed(5)}`;
+        coordsP.classList.remove('hidden');
     } else {
         coordsP.classList.add('hidden');
-        mapButton.classList.add('hidden');
     }
+
+    window.TragoDriverMap?.renderOrderRoute?.(order);
 
 
     // --- Controlo dos botões consoante o ESTADO da encomenda ---
@@ -407,7 +412,7 @@ async function handleStartPickup(orderId) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Falha ao iniciar recolha.');
         
-        showCustomAlert('Sucesso', 'Recolha iniciada. Dirija-se ao ponto do cliente.', 'success');
+        showCustomAlert('Sucesso', 'Recolha iniciada. Dirija-se ao ponto de recolha.', 'success');
         showListaEntregas();
     } catch (error) {
         console.error('Falha ao iniciar recolha:', error);
@@ -465,7 +470,7 @@ async function handleStartDeliveryPhase(orderId) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Falha ao iniciar entrega.');
         
-        showCustomAlert('Sucesso', 'Entrega iniciada. Dirija-se ao ponto de entrega.', 'success');
+        showCustomAlert('Sucesso', 'Entrega iniciada. Siga a rota até ao ponto de entrega.', 'success');
         showListaEntregas();
     } catch (error) {
         console.error('Falha ao iniciar entrega:', error);

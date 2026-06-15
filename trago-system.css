@@ -3219,3 +3219,65 @@ textarea,
   .form-row-compact { grid-template-columns: 1fr !important; }
   .geo-suggestions-panel { position: fixed; left: 12px; right: 12px; top: auto; bottom: 12px; max-height: 48vh; }
 }
+
+/* Correção mobile/autocomplete: sugestões renderizadas no body para não ficarem presas em cards com overflow */
+.geo-suggestions-panel {
+  position: fixed !important;
+  z-index: 2147483000 !important;
+  max-height: min(320px, 52dvh) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24) !important;
+  padding: 6px !important;
+}
+.geo-suggestions-panel.hidden { display: none !important; }
+.geo-suggestions-list { display: grid; gap: 4px; }
+.geo-suggestions-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px 8px;
+  margin: -2px -2px 4px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+.geo-suggestions-header strong { font-size: 0.92rem; }
+.geo-suggestions-header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.geo-suggestion-item {
+  min-height: 52px;
+  touch-action: manipulation;
+}
+@media (max-width: 768px) {
+  html.geo-suggestions-open,
+  body.geo-suggestions-open {
+    overflow: hidden !important;
+  }
+  .geo-suggestions-panel.geo-suggestions-panel-mobile {
+    left: 10px !important;
+    right: 10px !important;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    top: auto !important;
+    width: auto !important;
+    max-height: min(58dvh, 430px) !important;
+    border-radius: 18px !important;
+    padding: 8px !important;
+  }
+}

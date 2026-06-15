@@ -501,6 +501,73 @@ const quoteWithOpenRouteService = async (origin: AnyRecord, destination: AnyReco
     source: 'openrouteservice'
   };
 };
+
+
+const routeWithOpenRouteService = async (origin: AnyRecord, destination: AnyRecord) => {
+  if (!TRAGO_ORS_API_KEY) return null;
+  const url = new URL('https://api.openrouteservice.org/v2/directions/driving-car');
+  url.searchParams.set('api_key', TRAGO_ORS_API_KEY);
+  url.searchParams.set('start', `${Number(origin.lng)},${Number(origin.lat)}`);
+  url.searchParams.set('end', `${Number(destination.lng)},${Number(destination.lat)}`);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json, application/geo+json' }
+  });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const feature = data?.features?.[0];
+  const summary = feature?.properties?.summary;
+  const geometry = feature?.geometry;
+  if (!summary || !geometry || !Array.isArray(geometry.coordinates)) return null;
+
+  return {
+    geometry,
+    distance_km: Number(summary.distance) / 1000,
+    duration_min: Number.isFinite(Number(summary.duration)) ? Math.max(1, Math.round(Number(summary.duration) / 60)) : null,
+    source: 'openrouteservice'
+  };
+};
+
+const buildRouteGeometry = async (origin: AnyRecord, destination: AnyRecord) => {
+  if (!isValidCoordinate(origin) || !isValidCoordinate(destination)) {
+    throw new HttpError(400, 'Coordenadas de recolha e entrega são obrigatórias.');
+  }
+
+  let route: AnyRecord | null = null;
+  try {
+    route = await routeWithOpenRouteService(origin, destination);
+  } catch (_error) {
+    route = null;
+  }
+
+  if (!route) {
+    const distanceKm = haversineKm(origin, destination);
+    route = {
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [Number(origin.lng), Number(origin.lat)],
+          [Number(destination.lng), Number(destination.lat)]
+        ]
+      },
+      distance_km: distanceKm,
+      duration_min: Math.max(1, Math.round((distanceKm / 35) * 60)),
+      source: 'haversine_fallback'
+    };
+  }
+
+  return {
+    origin,
+    destination,
+    geometry: route.geometry,
+    distance_km: Number(Number(route.distance_km).toFixed(2)),
+    duration_min: route.duration_min,
+    delivery_fee: calculateDeliveryFee(Number(route.distance_km)),
+    source: route.source
+  };
+};
 const buildRouteQuote = async (origin: AnyRecord, destination: AnyRecord) => {
   if (!isValidCoordinate(origin) || !isValidCoordinate(destination)) {
     throw new HttpError(400, 'Coordenadas de recolha e entrega são obrigatórias.');
@@ -960,6 +1027,14 @@ const routeGeo = async (req: Request, path: string, method: string) => {
     const quote = await buildRouteQuote(body.origin, body.destination);
     return json(quote);
   }
+
+  if (path === '/api/geo/route' && method === 'POST') {
+    await requireUser(req);
+    const body = await readBody(req) as AnyRecord;
+    const route = await buildRouteGeometry(body.origin, body.destination);
+    return json(route);
+  }
+
   return null;
 };
 
