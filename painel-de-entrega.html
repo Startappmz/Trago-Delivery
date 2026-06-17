@@ -416,8 +416,8 @@
                     <strong id="payment-confirmation-total">0.00 MZN</strong>
                 </div>
                 <div class="form-group" id="payment-confirmation-amount-group">
-                    <label for="payment-confirmed-amount">Introduza exactamente o valor apresentado</label>
-                    <input type="number" id="payment-confirmed-amount" class="form-input" min="0" step="0.01" placeholder="0.00" autocomplete="off">
+                    <label for="payment-confirmed-amount">Digite manualmente o valor apresentado</label>
+                    <input type="text" id="payment-confirmed-amount" class="form-input" inputmode="decimal" placeholder="Digite manualmente o valor exacto" autocomplete="off" data-user-typed="false">
                 </div>
                 <small id="payment-confirmation-method">Método: —</small>
             </div>
@@ -440,6 +440,6 @@
     <script src="js/common/supabaseRealtime.js"></script>
     <script src="js/driver/driverMap.js"></script>
     <script src="js/driver/driverTracking.js"></script>
-    <script src="js/driver/driver.js"></script>
+    <script src="js/driver/driver.js?v=20260617-payment-force"></script>
 </body>
 </html>
