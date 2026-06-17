@@ -28,7 +28,8 @@ exports.createCost = asyncHandler(async (req, res) => {
     description,
     date,
     assignedUserId,
-    assignedClientId
+    assignedClientId,
+    assignedVehicleId
   } = req.body;
 
   if (!COMPANY_COST_CATEGORIES.includes(category)) {
@@ -50,6 +51,7 @@ exports.createCost = asyncHandler(async (req, res) => {
 
   let assignedUser = null;
   let assignedClient = null;
+  let assignedVehicle = null;
 
   if (assignedUserId) {
     if (!isValidId(assignedUserId)) {
@@ -67,9 +69,18 @@ exports.createCost = asyncHandler(async (req, res) => {
     assignedClient = assignedClientId;
   }
 
-  if (assignedUser && assignedClient) {
+  if (assignedVehicleId) {
+    if (!isValidId(assignedVehicleId)) {
+      res.status(400);
+      throw new Error('ID de veículo inválido para atribuição do custo.');
+    }
+    assignedVehicle = assignedVehicleId;
+  }
+
+  const assignments = [assignedUser, assignedClient, assignedVehicle].filter(Boolean);
+  if (assignments.length > 1) {
     res.status(400);
-    throw new Error('O custo não pode ser atribuído simultaneamente a utilizador e cliente.');
+    throw new Error('O custo só pode ser atribuído a um funcionário, cliente ou veículo.');
   }
 
   const cost = await CompanyCost.create({
@@ -79,7 +90,8 @@ exports.createCost = asyncHandler(async (req, res) => {
     date: parsedDate,
     createdBy: req.user ? req.user.id : undefined,
     assignedUser,
-    assignedClient
+    assignedClient,
+    assignedVehicle
   });
 
   res.status(201).json({
@@ -114,6 +126,7 @@ exports.getCostsList = asyncHandler(async (req, res) => {
     .limit(max)
     .populate('assignedUser', 'nome telefone role')
     .populate('assignedClient', 'nome telefone empresa')
+    .populate('assignedVehicle', 'plate brand model type status')
     .lean();
 
   res.status(200).json({

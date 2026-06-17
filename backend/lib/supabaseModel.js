@@ -307,7 +307,7 @@ const createModel = ({ name, table, collection, mapping, defaults = {}, relation
         if (source[apiField] === undefined) return;
 
         let value = source[apiField];
-        if (['user', 'created_by_admin', 'assigned_to_driver', 'client', 'cancelledBy', 'createdBy', 'assignedUser', 'assignedClient', 'employee', 'created_by', 'driver', 'order'].includes(apiField)) {
+        if (['user', 'created_by_admin', 'assigned_to_driver', 'client', 'vehicle', 'assignedVehicle', 'cancelledBy', 'createdBy', 'assignedUser', 'assignedClient', 'employee', 'created_by', 'driver', 'order'].includes(apiField)) {
           value = normalizeId(value);
         }
 

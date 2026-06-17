@@ -5,11 +5,14 @@
 
 // --- (MELHORIA) Constantes de Nomes de Serviço ---
 const SERVICE_NAMES = {
-    'doc': 'Tram. Documentos',
-    'farma': 'Farmácia',
-    'carga': 'Cargas',
-    'rapido': 'Delivery Rápido',
-    'outros': 'Outros'
+    doc: 'Tram. Documentos',
+    farma: 'Farmácia',
+    carga: 'Cargas',
+    rapido: 'Delivery Rápido',
+    restaurante_comida: 'Comida de Restaurante',
+    mercadoria_cp: 'Mercadoria C/P',
+    refeicao_restaurante_p: 'Refeição Restaurante P',
+    outros: 'Outros'
 };
 
 /* --- Funções de Alerta Customizado --- */

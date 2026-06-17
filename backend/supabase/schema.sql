@@ -33,10 +33,25 @@ create table if not exists public.users (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.vehicles (
+  id text primary key default public.trago_generate_id(),
+  plate text not null unique,
+  brand text,
+  model text,
+  type text not null default 'mota' check (type in ('mota', 'carro', 'carrinha', 'outro')),
+  status text not null default 'ativo' check (status in ('ativo', 'manutencao', 'inativo')),
+  notes text,
+  created_by text references public.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.driver_profiles (
   id text primary key default public.trago_generate_id(),
   user_id text not null unique references public.users(id) on delete cascade,
   vehicle_plate text default '',
+  vehicle_id text references public.vehicles(id) on delete set null,
+  driver_type text not null default 'freelancer' check (driver_type in ('freelancer', 'official')),
   status text not null default 'offline' check (status in ('online_livre', 'online_ocupado', 'em_recolha', 'em_entrega', 'offline')),
   commission_rate numeric(5,2) not null default 20 check (commission_rate >= 0 and commission_rate <= 100),
   last_location jsonb,
@@ -52,6 +67,10 @@ create table if not exists public.clients (
   empresa text,
   nuit text,
   endereco text,
+  billing_type text not null default 'prepaid' check (billing_type in ('prepaid', 'postpaid')),
+  credit_limit numeric(12,2) not null default 0 check (credit_limit >= 0),
+  credit_balance numeric(12,2) not null default 0 check (credit_balance >= 0),
+  credit_used numeric(12,2) not null default 0 check (credit_used >= 0),
   created_by_admin text references public.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -67,6 +86,9 @@ create table if not exists public.orders (
   address_text text,
   address_coords jsonb,
   pickup_address_text text,
+  pickup_contact_name text,
+  pickup_contact_phone text,
+  pickup_notes text,
   pickup_address_coords jsonb,
   service_price numeric(12,2) not null default 0,
   delivery_fee numeric(12,2) not null default 0,
@@ -99,7 +121,12 @@ create table if not exists public.orders (
   cancel_reason text,
   valor_motorista numeric(12,2) not null default 0,
   valor_empresa numeric(12,2) not null default 0,
-  payment_method text not null default 'cash' check (payment_method in ('cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer')),
+  payment_method text not null default 'cash' check (payment_method in ('cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer', 'pos', 'postpaid_credit')),
+  payment_status text not null default 'nao_pago' check (payment_status in ('nao_pago', 'aguardando_confirmacao_pagamento', 'pago', 'pos_pago_mensal')),
+  payment_confirmed_amount numeric(12,2),
+  payment_confirmation_requested_at timestamptz,
+  payment_confirmed_at timestamptz,
+  driver_delivery_notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -123,7 +150,7 @@ create table if not exists public.trips (
 
 create table if not exists public.expenses (
   id text primary key default public.trago_generate_id(),
-  category text not null check (category in ('salarios', 'renda', 'diversos', 'manutencao', 'comunicacao', 'marketing', 'combustivel')),
+  category text not null check (category in ('salarios', 'renda', 'diversos', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo')),
   description text not null,
   amount numeric(12,2) not null default 0 check (amount >= 0),
   date timestamptz not null,
@@ -135,34 +162,45 @@ create table if not exists public.expenses (
 
 create table if not exists public.company_costs (
   id text primary key default public.trago_generate_id(),
-  category text not null check (category in ('salarios', 'renda', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'diversos')),
+  category text not null check (category in ('salarios', 'renda', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo', 'diversos')),
   description text default '',
   amount numeric(12,2) not null default 0 check (amount >= 0),
   date timestamptz not null default now(),
   created_by text references public.users(id) on delete set null,
   assigned_user text references public.users(id) on delete set null,
   assigned_client text references public.clients(id) on delete set null,
+  assigned_vehicle text references public.vehicles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint company_cost_single_assignment check (
-    assigned_user is null or assigned_client is null
+    ((assigned_user is not null)::int + (assigned_client is not null)::int + (assigned_vehicle is not null)::int) <= 1
   )
 );
 
 create index if not exists idx_users_role_nome on public.users(role, nome);
+create index if not exists idx_vehicles_plate on public.vehicles(plate);
 create index if not exists idx_driver_profiles_status on public.driver_profiles(status);
+create index if not exists idx_driver_profiles_vehicle on public.driver_profiles(vehicle_id);
+create index if not exists idx_driver_profiles_type on public.driver_profiles(driver_type);
 create index if not exists idx_orders_status_created on public.orders(status, created_at desc);
 create index if not exists idx_orders_driver_status on public.orders(assigned_to_driver, status);
 create index if not exists idx_orders_client_completed on public.orders(client, status, timestamp_completed desc);
 create index if not exists idx_orders_payment_method on public.orders(payment_method);
+create index if not exists idx_orders_payment_status on public.orders(payment_status);
+create index if not exists idx_clients_billing_type on public.clients(billing_type);
 create index if not exists idx_orders_route_distance on public.orders(route_distance_km);
 create index if not exists idx_trips_driver_started on public.trips(driver, started_at desc);
 create index if not exists idx_expenses_date_category on public.expenses(date desc, category);
 create index if not exists idx_company_costs_date_category on public.company_costs(date desc, category);
+create index if not exists idx_company_costs_vehicle on public.company_costs(assigned_vehicle);
 
 -- Triggers de updated_at
 drop trigger if exists trg_users_updated_at on public.users;
 create trigger trg_users_updated_at before update on public.users
+for each row execute function public.trago_touch_updated_at();
+
+drop trigger if exists trg_vehicles_updated_at on public.vehicles;
+create trigger trg_vehicles_updated_at before update on public.vehicles
 for each row execute function public.trago_touch_updated_at();
 
 drop trigger if exists trg_driver_profiles_updated_at on public.driver_profiles;
@@ -192,6 +230,7 @@ for each row execute function public.trago_touch_updated_at();
 -- Como o backend usa SUPABASE_SECRET_KEY no servidor, a chave secreta bypassa RLS.
 -- Mantemos RLS activa por segurança caso alguém tente usar chave pública no front-end.
 alter table public.users enable row level security;
+alter table public.vehicles enable row level security;
 alter table public.driver_profiles enable row level security;
 alter table public.clients enable row level security;
 alter table public.orders enable row level security;

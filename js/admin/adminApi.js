@@ -15,7 +15,9 @@ const PAYMENT_METHOD_LABELS = {
     mpesa: 'M-Pesa',
     emola: 'e-Mola',
     mkesh: 'mKesh',
-    bank_transfer: 'Transferencia bancaria'
+    bank_transfer: 'Transferência Bancária',
+    pos: 'POS',
+    postpaid_credit: 'Cliente Pós-pago / Crédito'
 };
 
 const ORDER_STATUS_LABELS = {
@@ -60,19 +62,26 @@ async function loadOverviewStats() {
     }
 }
 
-async function loadFinancialStats() {
-    const formatMZN = (value) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(value);
+async function loadFinancialStats(period = 'month') {
+    const formatMZN = (value) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(value || 0);
+    const periodLabels = { day: 'Hoje', week: 'Esta Semana', month: 'Este Mês' };
+    const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
     try {
-        const response = await fetch(`${API_URL}/api/stats/financials`, { headers: getAuthHeaders('admin') });
+        const response = await fetch(`${API_URL}/api/stats/financials?period=${encodeURIComponent(safePeriod)}`, { headers: getAuthHeaders('admin') });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
+        const label = data.period?.label || periodLabels[safePeriod];
+        const titleEl = document.getElementById('financial-section-title');
+        const chartTitleEl = document.getElementById('financial-chart-title');
+        if (titleEl) titleEl.innerText = `Financeiro — ${label}`;
+        if (chartTitleEl) chartTitleEl.innerText = `Divisão da Receita — ${label}`;
         
         document.getElementById('stats-receita-total').innerText = formatMZN(data.totalReceita);
         document.getElementById('stats-lucro-empresa').innerText = formatMZN(data.totalLucroEmpresa);
         document.getElementById('stats-ganhos-motorista').innerText = formatMZN(data.totalGanhosMotorista);
         
         const topDriverEl = document.getElementById('stats-top-driver');
-        if (data.topDriver.nome !== 'N/A') {
+        if (data.topDriver && data.topDriver.nome !== 'N/A') {
             topDriverEl.innerHTML = `${data.topDriver.nome} <br><small class="metric-muted">${formatMZN(data.topDriver.totalGanhos)}</small>`;
         } else {
             topDriverEl.innerText = 'N/A';
@@ -305,6 +314,27 @@ async function loadCostAssignmentOptions() {
             select.appendChild(optGroupStaff);
         }
 
+        // Veículos
+        try {
+            const vehiclesResp = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
+            if (vehiclesResp.ok) {
+                const vehiclesData = await vehiclesResp.json();
+                if (vehiclesData.vehicles && vehiclesData.vehicles.length > 0) {
+                    const optGroupVehicles = document.createElement('optgroup');
+                    optGroupVehicles.label = 'Veículos / Matrículas';
+                    vehiclesData.vehicles.forEach((v) => {
+                        const opt = document.createElement('option');
+                        opt.value = `vehicle:${v._id}`;
+                        opt.textContent = `${v.plate || 'Sem matrícula'}${v.type ? ` · ${v.type}` : ''}`;
+                        optGroupVehicles.appendChild(opt);
+                    });
+                    select.appendChild(optGroupVehicles);
+                }
+            }
+        } catch (vehicleError) {
+            console.warn('Falha ao carregar veículos para custos:', vehicleError);
+        }
+
         // Clientes
         if (clientsData.clients && clientsData.clients.length > 0) {
             const optGroupClients = document.createElement('optgroup');
@@ -367,6 +397,8 @@ async function loadLatestCosts(tableBody, monthParam) {
                 assignedStr = `Funcionário: ${cost.assignedUser.nome}`;
             } else if (cost.assignedClient && cost.assignedClient.nome) {
                 assignedStr = `Cliente: ${cost.assignedClient.nome}`;
+            } else if (cost.assignedVehicle && cost.assignedVehicle.plate) {
+                assignedStr = `Veículo: ${cost.assignedVehicle.plate}`;
             } else {
                 assignedStr = '-';
             }
@@ -389,7 +421,7 @@ async function loadLatestCosts(tableBody, monthParam) {
 
 async function loadDrivers() {
     const tableBody = document.getElementById('drivers-table-body');
-    tableBody.innerHTML = '<tr><td colspan="5">A carregar...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="6">A carregar...</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/drivers`, { method: 'GET', headers: getAuthHeaders('admin') });
         if (response.status === 401) { return handleLogout('admin'); }
@@ -397,18 +429,22 @@ async function loadDrivers() {
         if (!response.ok) throw new Error(data.message);
         tableBody.innerHTML = '';
         if (data.drivers.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5">Nenhum motorista registado.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="6">Nenhum motorista registado.</td></tr>';
             return;
         }
         data.drivers.forEach(driver => {
-            const profile = driver.profile || { vehicle_plate: '(N/D)', status: 'offline' };
-            const statusClass = `status-${profile.status.replace('_', '-')}`;
-            const statusText = profile.status.replace('_', ' ');
+            const profile = driver.profile || { vehicle_plate: '(N/D)', status: 'offline', driverType: 'freelancer' };
+            const statusClass = `status-${String(profile.status || 'offline').replace('_', '-')}`;
+            const statusText = String(profile.status || 'offline').replace('_', ' ');
+            const driverType = profile.driverType || profile.driver_type || 'freelancer';
+            const typeLabel = driverType === 'official' ? 'Oficial Trago' : 'Freelancer';
+            const vehicleLabel = profile.vehicle?.plate || profile.vehicle_plate || '(N/D)';
             tableBody.innerHTML += `
                 <tr>
                     <td>${driver.nome}</td>
                     <td>${driver.telefone}</td>
-                    <td>${profile.vehicle_plate}</td>
+                    <td>${vehicleLabel}</td>
+                    <td>${typeLabel}</td>
                     <td><span class="status ${statusClass}">${statusText}</span></td>
                     <td>
                         <button class="btn-action btn-action-small" onclick="openEditDriverModal('${driver._id}')" title="Editar"><i class="fas fa-edit"></i></button>
@@ -419,7 +455,7 @@ async function loadDrivers() {
         });
     } catch (error) { 
         console.error('Falha ao carregar motoristas:', error); 
-        tableBody.innerHTML = '<tr><td colspan="5">Erro ao carregar motoristas.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6">Erro ao carregar motoristas.</td></tr>';
     }
 }
 
@@ -519,7 +555,7 @@ async function loadHistory() {
 
 async function loadClients() {
     const tableBody = document.getElementById('clients-table-body');
-    tableBody.innerHTML = '<tr><td colspan="4">A carregar...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="6">A carregar...</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/clients`, { method: 'GET', headers: getAuthHeaders('admin') });
         if (response.status === 401) { return handleLogout('admin'); }
@@ -527,7 +563,7 @@ async function loadClients() {
         if (!response.ok) throw new Error(data.message);
         tableBody.innerHTML = '';
         if (data.clients.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4">Nenhum cliente registado.</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="6">Nenhum cliente registado.</td></tr>';
             return;
         }
         data.clients.forEach(client => {
@@ -536,6 +572,8 @@ async function loadClients() {
                     <td>${client.nome}</td>
                     <td>${client.telefone}</td>
                     <td>${client.empresa || 'N/D'}</td>
+                    <td>${client.billing_type === 'postpaid' ? '<span class="status status-online-livre">Pós-pago</span>' : 'Normal'}</td>
+                    <td>${client.billing_type === 'postpaid' ? `${Number(client.credit_balance || 0).toFixed(2)} / ${Number(client.credit_limit || 0).toFixed(2)} MZN` : '—'}</td>
                     <td>
                         <button class="btn-action btn-action-small" onclick="openEditClientModal('${client._id}')" title="Editar"><i class="fas fa-edit"></i></button>
                         <button class="btn-action-small btn-action-report" onclick="openStatementModal('${client._id}', '${client.nome}')" title="Ver Extrato"><i class="fas fa-file-invoice-dollar"></i></button>
@@ -546,7 +584,7 @@ async function loadClients() {
         });
     } catch (error) { 
         console.error('Falha ao carregar clientes:', error);
-        tableBody.innerHTML = '<tr><td colspan="4">Erro ao carregar clientes.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6">Erro ao carregar clientes.</td></tr>';
     }
 }
 
@@ -570,7 +608,7 @@ async function loadClientsIntoDropdown() {
         clientCache.forEach(client => {
             const option = document.createElement('option');
             option.value = client._id;
-            option.textContent = `${client.nome} (${client.empresa || client.telefone})`;
+            option.textContent = `${client.nome} (${client.empresa || client.telefone})${client.billing_type === 'postpaid' ? ` · Pós-pago: ${Number(client.credit_balance || 0).toFixed(2)} MZN` : ''}`;
             select.appendChild(option);
         });
     } catch (error) {
@@ -655,6 +693,7 @@ async function handleAddCost(e) {
 
     let assignedUserId;
     let assignedClientId;
+    let assignedVehicleId;
 
     if (assignedRaw) {
         const [type, id] = assignedRaw.split(':');
@@ -662,6 +701,8 @@ async function handleAddCost(e) {
             assignedUserId = id;  // associar a utilizador/motorista
         } else if (type === 'client') {
             assignedClientId = id;
+        } else if (type === 'vehicle') {
+            assignedVehicleId = id;
         }
     }
 
@@ -675,7 +716,8 @@ async function handleAddCost(e) {
             description: description || undefined,
             date: date || undefined,
             assignedUserId: assignedUserId || undefined,
-            assignedClientId: assignedClientId || undefined
+            assignedClientId: assignedClientId || undefined,
+            assignedVehicleId: assignedVehicleId || undefined
         };
 
         const response = await fetch(`${API_URL}/api/costs`, {
@@ -771,6 +813,8 @@ async function handleExportCostsExcel() {
                 assignedStr = `Funcionário: ${cost.assignedUser.nome}`;
             } else if (cost.assignedClient && cost.assignedClient.nome) {
                 assignedStr = `Cliente: ${cost.assignedClient.nome}`;
+            } else if (cost.assignedVehicle && cost.assignedVehicle.plate) {
+                assignedStr = `Veículo: ${cost.assignedVehicle.plate}`;
             }
 
             rows.push([
@@ -895,8 +939,10 @@ async function handleAddDriver(e) {
     const phone = document.getElementById('driver-phone').value;
     const email = document.getElementById('driver-email').value;
     const plate = document.getElementById('driver-plate').value;
+    const vehicleId = document.getElementById('driver-vehicle-id')?.value || '';
+    const driverType = document.getElementById('driver-type')?.value || 'freelancer';
     const password = document.getElementById('driver-password').value;
-    const commissionRate = document.getElementById('driver-commission').value;
+    const commissionRate = driverType === 'official' ? 0 : document.getElementById('driver-commission').value;
     
     if (password.length < 6) {
         showCustomAlert('Atenção', 'A senha do motorista deve ter pelo menos 6 caracteres.');
@@ -916,6 +962,8 @@ async function handleAddDriver(e) {
                 telefone: phone, 
                 password, 
                 vehicle_plate: plate,
+                vehicleId: vehicleId || undefined,
+                driverType,
                 commissionRate: commissionRate
             })
         });
@@ -927,6 +975,7 @@ async function handleAddDriver(e) {
         form.reset();
         showAddDriverForm(false);
         loadDrivers();
+        loadVehiclesIntoSelects();
         
     } catch (error) {
         console.error('Falha ao adicionar motorista:', error);
@@ -947,8 +996,10 @@ async function handleUpdateDriver(event) {
         nome: document.getElementById('edit-driver-name').value,
         telefone: document.getElementById('edit-driver-phone').value,
         vehicle_plate: document.getElementById('edit-driver-plate').value,
+        vehicleId: document.getElementById('edit-driver-vehicle-id')?.value || '',
+        driverType: document.getElementById('edit-driver-type')?.value || 'freelancer',
         status: document.getElementById('edit-driver-status').value,
-        commissionRate: document.getElementById('edit-driver-commission').value
+        commissionRate: document.getElementById('edit-driver-type')?.value === 'official' ? 0 : document.getElementById('edit-driver-commission').value
     };
     
     submitButton.disabled = true;
@@ -988,7 +1039,9 @@ async function handleAddClient(e) {
         empresa: document.getElementById('client-empresa').value,
         email: document.getElementById('client-email').value,
         nuit: document.getElementById('client-nuit').value,
-        endereco: document.getElementById('client-endereco').value
+        endereco: document.getElementById('client-endereco').value,
+        billing_type: document.getElementById('client-billing-type')?.value || 'prepaid',
+        credit_limit: Number(document.getElementById('client-credit-limit')?.value || 0)
     };
     if (!clientData.nome || !clientData.telefone) {
         showCustomAlert('Atenção', 'Nome e Telefone são obrigatórios.', 'error');
@@ -1010,6 +1063,7 @@ async function handleAddClient(e) {
         form.reset();
         showAddClientForm(false);
         loadClients();
+        loadClientsIntoDropdown();
     } catch (error) {
         console.error('Falha ao adicionar cliente:', error);
         showCustomAlert('Erro', error.message, 'error');
@@ -1031,7 +1085,9 @@ async function handleUpdateClient(e) {
         empresa: document.getElementById('edit-client-empresa').value,
         email: document.getElementById('edit-client-email').value,
         nuit: document.getElementById('edit-client-nuit').value,
-        endereco: document.getElementById('edit-client-endereco').value
+        endereco: document.getElementById('edit-client-endereco').value,
+        billing_type: document.getElementById('edit-client-billing-type')?.value || 'prepaid',
+        credit_limit: Number(document.getElementById('edit-client-credit-limit')?.value || 0)
     };
     if (!updatedData.nome || !updatedData.telefone) {
         showCustomAlert('Atenção', 'Nome e Telefone são obrigatórios.', 'error');
@@ -1166,6 +1222,114 @@ async function handleGenerateStatement() {
     }
 }
 
+
+
+async function loadVehicles() {
+    const tableBody = document.getElementById('vehicles-table-body');
+    if (!tableBody) return;
+    tableBody.innerHTML = '<tr><td colspan="5">A carregar...</td></tr>';
+    try {
+        const response = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
+        if (response.status === 401) return handleLogout('admin');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Erro ao carregar veículos.');
+        const vehicles = data.vehicles || [];
+        if (!vehicles.length) {
+            tableBody.innerHTML = '<tr><td colspan="5">Nenhum veículo registado.</td></tr>';
+            return;
+        }
+        tableBody.innerHTML = vehicles.map(v => `
+            <tr>
+                <td>${v.plate || '—'}</td>
+                <td>${v.type || '—'}</td>
+                <td><span class="status status-${String(v.status || 'ativo').replace('_', '-')}">${v.status || 'ativo'}</span></td>
+                <td>${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
+                <td><button class="btn-action-small btn-danger" onclick="handleDeleteVehicle('${v._id}', '${(v.plate || '').replace(/'/g, '\&#039;')}')" title="Apagar"><i class="fas fa-trash"></i></button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Falha ao carregar veículos:', error);
+        tableBody.innerHTML = '<tr><td colspan="5">Erro ao carregar veículos.</td></tr>';
+    }
+}
+
+async function loadVehiclesIntoSelects() {
+    const selects = ['driver-vehicle-id', 'edit-driver-vehicle-id'].map(id => document.getElementById(id)).filter(Boolean);
+    if (!selects.length) return;
+    try {
+        const response = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
+        if (!response.ok) return;
+        const data = await response.json();
+        const vehicles = data.vehicles || [];
+        selects.forEach(select => {
+            const current = select.value;
+            select.innerHTML = '<option value="">-- Sem veículo associado --</option>';
+            vehicles.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v._id;
+                opt.textContent = `${v.plate}${v.type ? ` · ${v.type}` : ''}`;
+                select.appendChild(opt);
+            });
+            if (current) select.value = current;
+        });
+    } catch (error) {
+        console.warn('Falha ao carregar veículos nos selects:', error);
+    }
+}
+
+async function handleAddVehicle(e) {
+    e.preventDefault();
+    const form = e.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const body = {
+        plate: document.getElementById('vehicle-plate').value,
+        type: document.getElementById('vehicle-type').value,
+        status: document.getElementById('vehicle-status').value,
+        brand: document.getElementById('vehicle-brand').value,
+        model: document.getElementById('vehicle-model').value,
+        notes: document.getElementById('vehicle-notes').value
+    };
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A guardar...';
+    try {
+        const response = await fetch(`${API_URL}/api/vehicles`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Falha ao adicionar veículo.');
+        showCustomAlert('Sucesso', 'Veículo registado com sucesso!', 'success');
+        form.reset();
+        await loadVehicles();
+        await loadVehiclesIntoSelects();
+        await loadCostAssignmentOptions();
+    } catch (error) {
+        showCustomAlert('Erro', error.message || 'Erro ao adicionar veículo.', 'error');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = '<i class="fas fa-plus"></i> Adicionar Veículo';
+    }
+}
+
+async function handleDeleteVehicle(vehicleId, plate) {
+    if (!confirm(`Tem a certeza que quer apagar o veículo "${plate}"?`)) return;
+    try {
+        const response = await fetch(`${API_URL}/api/vehicles/${vehicleId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders('admin')
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Falha ao apagar veículo.');
+        showCustomAlert('Sucesso', data.message || 'Veículo apagado.', 'success');
+        loadVehicles();
+        loadVehiclesIntoSelects();
+        loadCostAssignmentOptions();
+    } catch (error) {
+        showCustomAlert('Erro', error.message || 'Erro ao apagar veículo.', 'error');
+    }
+}
+
 // Mapa de categorias de custos -> label amigável
 const COST_CATEGORY_LABELS = {
     salarios: 'Salários',
@@ -1174,6 +1338,7 @@ const COST_CATEGORY_LABELS = {
     comunicacao: 'Comunicação',
     marketing: 'Marketing',
     combustivel: 'Combustível',
+    veiculo: 'Veículo / Matrícula',
     diversos: 'Diversos'
 };
 

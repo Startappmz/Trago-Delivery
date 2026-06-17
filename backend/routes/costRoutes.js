@@ -28,7 +28,21 @@ router.post(
       .notEmpty()
       .withMessage('Valor do custo é obrigatório.')
       .isFloat({ min: 0 })
-      .withMessage('Valor do custo deve ser um número >= 0.')
+      .withMessage('Valor do custo deve ser um número >= 0.'),
+    body('description').optional({ checkFalsy: true }).trim().isLength({ max: 500 }),
+    body('date').optional({ checkFalsy: true }).isISO8601().withMessage('Data inválida.'),
+    body('assignedUserId')
+      .optional({ checkFalsy: true })
+      .isMongoId()
+      .withMessage('ID de funcionário inválido.'),
+    body('assignedClientId')
+      .optional({ checkFalsy: true })
+      .isMongoId()
+      .withMessage('ID de cliente inválido.'),
+    body('assignedVehicleId')
+      .optional({ checkFalsy: true })
+      .isMongoId()
+      .withMessage('ID de veículo inválido.')
   ],
   validateRequest,
   costController.createCost

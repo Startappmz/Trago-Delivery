@@ -102,6 +102,18 @@ function attachEventListeners() {
         e.preventDefault(); 
         showServiceForm('rapido'); 
     });
+    document.getElementById('nav-form-restaurante-comida')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showServiceForm('restaurante_comida');
+    });
+    document.getElementById('nav-form-mercadoria-cp')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showServiceForm('mercadoria_cp');
+    });
+    document.getElementById('nav-form-refeicao-restaurante-p')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showServiceForm('refeicao_restaurante_p');
+    });
     document.getElementById('nav-form-outros').addEventListener('click', (e) => { 
         e.preventDefault(); 
         showServiceForm('outros'); 
@@ -138,6 +150,25 @@ function attachEventListeners() {
     document.getElementById('btn-close-confirmation-modal').addEventListener('click', closeConfirmationModal);
     document.getElementById('btn-cancel-confirmation-modal').addEventListener('click', closeConfirmationModal);
     
+    const financialPeriodSelect = document.getElementById('financial-period-select');
+    if (financialPeriodSelect) {
+        financialPeriodSelect.addEventListener('change', () => loadFinancialStats(financialPeriodSelect.value));
+    }
+
+    const vehicleForm = document.getElementById('form-add-veiculo');
+    if (vehicleForm) {
+        vehicleForm.addEventListener('submit', handleAddVehicle);
+    }
+
+    const driverTypeSelect = document.getElementById('driver-type');
+    if (driverTypeSelect) {
+        driverTypeSelect.addEventListener('change', () => applyDriverTypeCommissionLock('driver-type', 'driver-commission'));
+    }
+    const editDriverTypeSelect = document.getElementById('edit-driver-type');
+    if (editDriverTypeSelect) {
+        editDriverTypeSelect.addEventListener('change', () => applyDriverTypeCommissionLock('edit-driver-type', 'edit-driver-commission'));
+    }
+
     // NOVO: formulário de custos (pode não existir em versões antigas)
     const costForm = document.getElementById('form-add-cost');
     if (costForm) {
@@ -220,7 +251,7 @@ function showPage(pageId, navId, title) {
     switch (pageId) {
         case 'visao-geral':
             loadOverviewStats();
-            loadFinancialStats();
+            loadFinancialStats(document.getElementById('financial-period-select')?.value || 'month');
             initServicesChart(false);
             break;
         case 'custos':
@@ -243,9 +274,10 @@ function showPage(pageId, navId, title) {
             initializeLiveMap();
             break;
         case 'cargos':
-            // opcional: recarregar listas após criar, etc.
             loadDrivers();
             loadClients();
+            loadVehicles();
+            loadVehiclesIntoSelects();
             break;
         case 'configuracoes':
             document.getElementById('form-change-password').reset();
@@ -263,6 +295,9 @@ function showServiceForm(serviceType) {
         'farma': 'Novo Pedido Farmacêutico',
         'carga': 'Novo Transporte de Carga',
         'rapido': 'Novo Delivery Rápido',
+        'restaurante_comida': 'Nova Entrega — Comida de Restaurante',
+        'mercadoria_cp': 'Nova Entrega — Mercadoria C/P',
+        'refeicao_restaurante_p': 'Nova Entrega — Refeição Restaurante P',
         'outros': 'Outros Serviços'
     };
     showPage('form-nova-entrega', null, titles[serviceType] || 'Nova Entrega');
@@ -300,7 +335,7 @@ function connectSocket() {
         if (page === 'historico' && includeHistory) loadHistory();
         if (page === 'visao-geral') {
             loadOverviewStats();
-            if (includeFinancials) loadFinancialStats();
+            if (includeFinancials) loadFinancialStats(document.getElementById('financial-period-select')?.value || 'month');
             initServicesChart(false);
         }
     }
@@ -312,6 +347,11 @@ function connectSocket() {
             case 'pickup_started':
             case 'pickup_completed':
             case 'delivery_started':
+                refreshOperationalViews();
+                break;
+
+            case 'payment_confirmation_pending':
+                checkAdminPaymentPendingAlerts(true);
                 refreshOperationalViews();
                 break;
 
@@ -376,6 +416,15 @@ function handleClientSelect(e) {
         document.getElementById('client-phone1').value = client.telefone;
         document.getElementById('client-phone2').value = ''; // Limpa o tel. alternativo
         document.getElementById('delivery-client-id').value = client._id;
+        const paymentMethodEl = document.getElementById('payment-method');
+        if (paymentMethodEl) {
+            if (client.billing_type === 'postpaid') {
+                paymentMethodEl.value = 'postpaid_credit';
+                showCustomAlert('Cliente pós-pago', `Este cliente usa crédito mensal. Saldo disponível: ${Number(client.credit_balance || 0).toFixed(2)} MZN.`, 'info');
+            } else if (paymentMethodEl.value === 'postpaid_credit') {
+                paymentMethodEl.value = 'cash';
+            }
+        }
         
         // Torna os campos read-only
         document.getElementById('client-name').readOnly = true;
@@ -417,6 +466,37 @@ function handleDeleteOldHistoryClick() {
         onConfirm: handleDeleteOldHistory // (adminApi.js)
     });
 }
+
+function applyDriverTypeCommissionLock(typeSelectId, commissionInputId) {
+    const typeEl = document.getElementById(typeSelectId);
+    const commissionEl = document.getElementById(commissionInputId);
+    if (!typeEl || !commissionEl) return;
+    if (typeEl.value === 'official') {
+        commissionEl.value = '0';
+        commissionEl.disabled = true;
+    } else {
+        commissionEl.disabled = false;
+        if (!commissionEl.value || Number(commissionEl.value) === 0) commissionEl.value = '20';
+    }
+}
+
+let lastAdminPaymentAlertAt = 0;
+async function checkAdminPaymentPendingAlerts(force = false) {
+    try {
+        const response = await fetch(`${API_URL}/api/orders/payment-pending`, { headers: getAuthHeaders('admin') });
+        if (!response.ok) return;
+        const data = await response.json();
+        const total = Number(data.total || 0);
+        const now = Date.now();
+        if (total > 0 && (force || now - lastAdminPaymentAlertAt > 120000)) {
+            lastAdminPaymentAlertAt = now;
+            showCustomAlert('Pagamentos por confirmar', `${total} entrega(s) aguardam confirmação de pagamento/finalização.`, 'info');
+        }
+    } catch (error) {
+        console.warn('Falha ao verificar pagamentos pendentes:', error);
+    }
+}
+setInterval(() => checkAdminPaymentPendingAlerts(false), 120000);
 
 /**
  * Carrega o perfil do administrador logado.

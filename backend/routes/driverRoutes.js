@@ -5,7 +5,7 @@ const { body, param } = require('express-validator');
 const driverController = require('../controllers/driverController');
 const { protect, admin, driver } = require('../middleware/authMiddleware');
 const { validateRequest } = require('../middleware/validateRequest');
-const { DRIVER_STATUS } = require('../utils/constants');
+const { DRIVER_STATUS, DRIVER_TYPES } = require('../utils/constants');
 
 const router = express.Router();
 
@@ -101,6 +101,14 @@ router.put(
     body('vehicle_plate')
       .optional({ checkFalsy: true })
       .trim(),
+    body('vehicleId')
+      .optional({ checkFalsy: true })
+      .isMongoId()
+      .withMessage('ID de veículo inválido.'),
+    body('driverType')
+      .optional({ checkFalsy: true })
+      .isIn(Object.values(DRIVER_TYPES))
+      .withMessage('Tipo de motorista inválido.'),
     body('status')
       .optional({ checkFalsy: true })
       .isIn(Object.values(DRIVER_STATUS))

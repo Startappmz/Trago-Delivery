@@ -1,5 +1,5 @@
 const { createModel } = require('../lib/supabaseModel');
-const { ORDER_STATUS } = require('../utils/constants');
+const { ORDER_STATUS, PAYMENT_METHODS, PAYMENT_STATUS } = require('../utils/constants');
 
 const Order = createModel({
   name: 'Order',
@@ -17,6 +17,9 @@ const Order = createModel({
     address_coords: 'address_coords',
     pickup_address_text: 'pickup_address_text',
     pickup_address_coords: 'pickup_address_coords',
+    pickup_contact_name: 'pickup_contact_name',
+    pickup_contact_phone: 'pickup_contact_phone',
+    pickup_notes: 'pickup_notes',
     service_price: 'service_price',
     delivery_fee: 'delivery_fee',
     route_distance_km: 'route_distance_km',
@@ -40,6 +43,11 @@ const Order = createModel({
     valor_motorista: 'valor_motorista',
     valor_empresa: 'valor_empresa',
     payment_method: 'payment_method',
+    payment_status: 'payment_status',
+    payment_confirmed_amount: 'payment_confirmed_amount',
+    payment_confirmation_requested_at: 'payment_confirmation_requested_at',
+    payment_confirmed_at: 'payment_confirmed_at',
+    driver_delivery_notes: 'driver_delivery_notes',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
@@ -51,7 +59,13 @@ const Order = createModel({
     route_distance_km: 0,
     valor_motorista: 0,
     valor_empresa: 0,
-    payment_method: 'cash'
+    payment_method: PAYMENT_METHODS.CASH,
+    payment_status: PAYMENT_STATUS.UNPAID,
+    payment_confirmed_amount: 0,
+    pickup_contact_name: '',
+    pickup_contact_phone: '',
+    pickup_notes: '',
+    driver_delivery_notes: ''
   },
   relations: {
     created_by_admin: {

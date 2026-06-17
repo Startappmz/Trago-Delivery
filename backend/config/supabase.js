@@ -1,5 +1,6 @@
 const REQUIRED_TABLES = [
   'users',
+  'vehicles',
   'driver_profiles',
   'clients',
   'orders',

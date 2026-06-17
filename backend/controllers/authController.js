@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const DriverProfile = require('../models/DriverProfile');
-const { FINANCIAL } = require('../utils/constants');
+const { FINANCIAL, DRIVER_TYPES } = require('../utils/constants');
 const { parseCommissionRate } = require('../utils/helpers');
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -32,7 +32,7 @@ const setAuthCookie = (res, token) =>
 
 exports.registerDriver = asyncHandler(async (req, res) => {
   const data = req.filtered || req.body;
-  const { nome, email, telefone, password, vehicle_plate, commissionRate } = data;
+  const { nome, email, telefone, password, vehicle_plate, vehicleId, driverType, commissionRate } = data;
 
   const normalizedEmail = email.toLowerCase();
   const userExists = await User.findOne({ email: normalizedEmail });
@@ -43,10 +43,13 @@ exports.registerDriver = asyncHandler(async (req, res) => {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  const parsedCommission = parseCommissionRate(
-    commissionRate,
-    FINANCIAL.DEFAULT_COMMISSION_RATE
-  );
+  const normalizedDriverType = Object.values(DRIVER_TYPES).includes(driverType)
+    ? driverType
+    : DRIVER_TYPES.FREELANCER;
+
+  const parsedCommission = normalizedDriverType === DRIVER_TYPES.OFFICIAL
+    ? 0
+    : parseCommissionRate(commissionRate, FINANCIAL.DEFAULT_COMMISSION_RATE);
 
   const user = await User.create({
     nome: nome.trim(),
@@ -60,6 +63,8 @@ exports.registerDriver = asyncHandler(async (req, res) => {
     const driverProfile = await DriverProfile.create({
       user: user._id,
       vehicle_plate: vehicle_plate?.trim() || '',
+      vehicle: vehicleId || null,
+      driverType: normalizedDriverType,
       commissionRate: parsedCommission
     });
 
@@ -150,10 +155,16 @@ exports.changePassword = asyncHandler(async (req, res) => {
 // GET /api/auth/me
 // Retorna os dados do utilizador autenticado
 exports.getMe = asyncHandler(async (req, res) => {
+  let profile = null;
+  if (req.user.role === 'driver') {
+    profile = await DriverProfile.findOne({ user: req.user._id }).lean();
+  }
+
   res.status(200).json({
     id: req.user._id,
     nome: req.user.nome,
     email: req.user.email,
-    role: req.user.role
+    role: req.user.role,
+    profile
   });
 });

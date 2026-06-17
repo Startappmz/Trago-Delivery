@@ -133,7 +133,7 @@ async function openAssignModal(orderId) {
         
         select.innerHTML = '<option value="">-- Selecione um motorista --</option>';
         data.drivers.forEach(driver => { 
-            select.innerHTML += `<option value="${driver.profile._id}">${driver.nome} (${driver.profile.vehicle_plate})</option>`; 
+            select.innerHTML += `<option value="${driver.profile._id}">${driver.nome} (${driver.profile.vehicle?.plate || driver.profile.vehicle_plate || 'Sem viatura'})</option>`; 
         });
         
         // Atribui a função de clique ao botão (usando a função do adminApi.js)
@@ -179,9 +179,13 @@ async function openEditDriverModal(driverUserId) {
         // Preenche o formulário
         document.getElementById('edit-driver-name').value = driver.nome;
         document.getElementById('edit-driver-phone').value = driver.telefone;
+        if (typeof loadVehiclesIntoSelects === 'function') await loadVehiclesIntoSelects();
         document.getElementById('edit-driver-plate').value = profile.vehicle_plate || '';
+        document.getElementById('edit-driver-type').value = profile.driverType || profile.driver_type || 'freelancer';
+        document.getElementById('edit-driver-vehicle-id').value = profile.vehicle?._id || profile.vehicle || profile.vehicle_id || '';
         document.getElementById('edit-driver-status').value = profile.status || 'offline';
         document.getElementById('edit-driver-commission').value = profile.commissionRate || 20;
+        if (typeof applyDriverTypeCommissionLock === 'function') applyDriverTypeCommissionLock('edit-driver-type', 'edit-driver-commission');
         
     } catch (error) { 
         console.error('Falha ao carregar dados do motorista:', error); 
@@ -227,12 +231,19 @@ async function openHistoryDetailModal(orderId) {
             <p><strong>Cliente:</strong> ${order.client_name}</p>
             <p><strong>Telefone:</strong> ${order.client_phone1}</p>
             <p><strong>Ponto de Recolha:</strong> ${order.pickup_address_text || 'N/D'}</p>
+            <p><strong>Responsável na Recolha:</strong> ${order.pickup_contact_name || 'N/D'}</p>
+            <p><strong>Contacto da Recolha:</strong> ${order.pickup_contact_phone || 'N/D'}</p>
+            <p><strong>Orientações de Recolha:</strong> ${order.pickup_notes || 'N/D'}</p>
             <p><strong>Ponto de Entrega:</strong> ${order.address_text || 'N/D'}</p>
             ${coordsHtml}
             <p><strong>Distância:</strong> ${order.route_distance_km ? Number(order.route_distance_km).toFixed(2) + ' km' : 'N/D'}</p>
             <p><strong>Preço Serviço:</strong> ${order.service_price ? Number(order.service_price).toFixed(2) + ' MZN' : '0.00 MZN'}</p>
             <p><strong>Taxa Distância:</strong> ${order.delivery_fee ? Number(order.delivery_fee).toFixed(2) + ' MZN' : '0.00 MZN'}</p>
-            <p><strong>Total:</strong> ${order.price ? order.price.toFixed(2) + ' MZN' : 'N/D'}</p>
+            <p><strong>Total:</strong> ${order.price ? Number(order.price).toFixed(2) + ' MZN' : 'N/D'}</p>
+            <p><strong>Pagamento:</strong> ${typeof getPaymentMethodLabel === 'function' ? getPaymentMethodLabel(order.payment_method) : (order.payment_method || 'N/D')}</p>
+            <p><strong>Estado do Pagamento:</strong> ${(order.payment_status || 'N/D').replace(/_/g, ' ')}</p>
+            <p><strong>Valor confirmado:</strong> ${order.payment_confirmed_amount != null ? Number(order.payment_confirmed_amount).toFixed(2) + ' MZN' : 'N/D'}</p>
+            <p><strong>Comentário do Motorista:</strong> ${order.driver_delivery_notes || 'N/D'}</p>
             <p><strong>Natureza:</strong> ${SERVICE_NAMES[order.service_type] || order.service_type}</p>
             <p><strong>Status:</strong> ${typeof getOrderStatusLabel === 'function' ? getOrderStatusLabel(order.status) : order.status}</p>
             <p><strong>Código:</strong> ${order.verification_code}</p>
@@ -347,6 +358,8 @@ async function openEditClientModal(clientId) {
         document.getElementById('edit-client-email').value = client.email || '';
         document.getElementById('edit-client-nuit').value = client.nuit || '';
         document.getElementById('edit-client-endereco').value = client.endereco || '';
+        document.getElementById('edit-client-billing-type').value = client.billing_type || 'prepaid';
+        document.getElementById('edit-client-credit-limit').value = client.credit_limit || 0;
         
     } catch (error) {
         console.error('Falha ao carregar dados do cliente:', error);
@@ -379,7 +392,7 @@ function openStatementModal(clientId, clientName) {
  * (Chamado por 'handleGenerateStatement' em adminApi.js)
  */
 function populateStatementModal(data, startDate, endDate) {
-    const { totalValue, totalOrders, ordersList } = data;
+    const { totalValue, totalOrders, ordersList, client, credit } = data;
     
     const formattedTotal = new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(totalValue);
     document.getElementById('statement-total-value').textContent = formattedTotal;
@@ -388,6 +401,9 @@ function populateStatementModal(data, startDate, endDate) {
     const start = new Date(startDate + 'T00:00:00Z').toLocaleDateString('pt-MZ', { timeZone: 'UTC' });
     const end = new Date(endDate + 'T00:00:00Z').toLocaleDateString('pt-MZ', { timeZone: 'UTC' });
     document.getElementById('statement-date-range').textContent = `Pedidos Concluídos de ${start} a ${end}`;
+    if (client?.billing_type === 'postpaid' && credit) {
+        document.getElementById('statement-date-range').textContent += ` · Crédito: ${Number(credit.balance || 0).toFixed(2)} / ${Number(credit.limit || 0).toFixed(2)} MZN`;
+    }
 
     const tableBody = document.getElementById('statement-table-body');
     tableBody.innerHTML = '';

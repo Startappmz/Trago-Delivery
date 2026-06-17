@@ -232,6 +232,13 @@ function connectDriverSocket() {
             return;
         }
 
+        if (event === 'payment_confirmation_pending') {
+            if (typeof checkDriverPaymentPendingAlerts === 'function') {
+                checkDriverPaymentPendingAlerts(true);
+            }
+            return;
+        }
+
         if (event === 'entrega_cancelada') {
             if (typeof showCustomAlert === 'function') {
                 showCustomAlert('Entrega Reatribuída', `O pedido #${data.orderId ? data.orderId.slice(-6) : ''} foi reatribuído/cancelado.`, 'info');

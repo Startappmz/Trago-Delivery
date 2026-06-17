@@ -3281,3 +3281,52 @@ textarea,
     padding: 8px !important;
   }
 }
+
+/* Melhorias operacionais Trago Delivery */
+.financial-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.compact-select-group {
+  min-width: 180px;
+  max-width: 240px;
+  margin-bottom: 0;
+}
+.pickup-guidance-card {
+  border-left: 3px solid var(--primary-color, #8DC543);
+}
+.pickup-guidance-card p,
+.recipient-card p {
+  overflow-wrap: anywhere;
+}
+.payment-confirmation-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  margin: .75rem 0 1rem;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 14px;
+  background: rgba(255,255,255,.08);
+}
+.payment-confirmation-total span {
+  opacity: .8;
+}
+.payment-confirmation-total strong {
+  font-size: 1.35rem;
+  font-family: 'Space Mono', monospace;
+}
+.status-ativo,
+.status-manutencao,
+.status-inativo {
+  text-transform: capitalize;
+}
+@media (max-width: 768px) {
+  .financial-section-header { align-items: stretch; }
+  .compact-select-group { max-width: none; width: 100%; }
+}

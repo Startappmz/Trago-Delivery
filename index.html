@@ -65,6 +65,9 @@
                             <li><a href="#" id="nav-form-doc"><i class="fas fa-file-alt"></i> Tramitação de Documentos</a></li>
                             <li><a href="#" id="nav-form-farma"><i class="fas fa-pills"></i> Produtos Farmacêuticos</a></li>
                             <li><a href="#" id="nav-form-carga"><i class="fas fa-truck"></i> Transporte de Cargas</a></li>
+                            <li><a href="#" id="nav-form-restaurante-comida"><i class="fas fa-utensils"></i> Comida de Restaurante</a></li>
+                            <li><a href="#" id="nav-form-mercadoria-cp"><i class="fas fa-boxes-stacked"></i> Mercadoria C/P</a></li>
+                            <li><a href="#" id="nav-form-refeicao-restaurante-p"><i class="fas fa-bowl-food"></i> Refeição Restaurante P</a></li>
                             <li><a href="#" id="nav-form-outros"><i class="fas fa-ellipsis-h"></i> Outros Serviços</a></li>
                         </ul>
                     </li>
@@ -226,7 +229,17 @@
                 </section>
 
                 <!-- Financial Stats -->
-                <h2 class="section-title">Financeiro (Este Mês)</h2>
+                <div class="financial-section-header">
+                    <h2 class="section-title" id="financial-section-title">Financeiro — Este Mês</h2>
+                    <div class="form-group compact-select-group">
+                        <label for="financial-period-select">Período</label>
+                        <select id="financial-period-select" class="form-input">
+                            <option value="day">Hoje</option>
+                            <option value="week">Esta Semana</option>
+                            <option value="month" selected>Este Mês</option>
+                        </select>
+                    </div>
+                </div>
                 <section class="stats-grid">
                     <div class="glass-card glass-card-3d stat-card card-success">
                         <div class="stat-card-inner">
@@ -281,7 +294,7 @@
                     </div>
                     
                     <div class="glass-card chart-container" id="financialChartContainer">
-                        <h3>Divisão da Receita (Este Mês)</h3>
+                        <h3 id="financial-chart-title">Divisão da Receita — Este Mês</h3>
                         <canvas id="financialPieChart"></canvas>
                     </div>
                 </section>
@@ -356,6 +369,8 @@
                                     <option value="emola">Emola</option>
                                     <option value="mkesh">M-Kesh</option>
                                     <option value="bank_transfer">Transferência Bancária</option>
+                                    <option value="pos">POS</option>
+                                    <option value="postpaid_credit">Cliente Pós-pago / Crédito</option>
                                 </select>
                             </div>
 
@@ -378,11 +393,24 @@
                                     <input type="text" id="pickup-address" name="pickup_address_text" class="form-input" placeholder="Ex: Restaurante, loja, armazém ou morada de recolha" autocomplete="off">
                                     <small>Pesquise e seleccione uma sugestão para obter coordenadas exactas.</small>
                                 </div>
+                                <div class="form-group">
+                                    <label for="pickup-contact-name">Responsável na Recolha</label>
+                                    <input type="text" id="pickup-contact-name" name="pickup_contact_name" class="form-input" placeholder="Ex: Gerente, caixa, fornecedor">
+                                </div>
+                                <div class="form-group">
+                                    <label for="pickup-contact-phone">Contacto da Recolha</label>
+                                    <input type="tel" id="pickup-contact-phone" name="pickup_contact_phone" class="form-input" placeholder="Ex: 84 000 0000">
+                                </div>
                                 <div class="form-group form-group-large geo-field">
                                     <label for="delivery-address">Ponto de Entrega</label>
                                     <input type="text" id="delivery-address" name="address_text" class="form-input" placeholder="Ex: Av. Julius Nyerere, 123, Maputo" autocomplete="off">
                                     <small>O preço por distância é calculado entre recolha e entrega.</small>
                                 </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="pickup-notes">Orientações para Recolha</label>
+                                <textarea id="pickup-notes" name="pickup_notes" class="form-input" rows="3" placeholder="Ex: perguntar por Fulano, recolher no balcão, confirmar volumes, referência do pedido..."></textarea>
+                                <small>Estas informações seguem para o painel do motorista.</small>
                             </div>
                             <div class="route-summary-card">
                                 <span>Distância estimada</span>
@@ -434,6 +462,7 @@
                                     <th>Nome</th>
                                     <th>Telefone</th>
                                     <th>Viatura</th>
+                                    <th>Tipo</th>
                                     <th>Estado</th>
                                     <th>Acções</th>
                                 </tr>
@@ -465,6 +494,8 @@
                                     <th>Nome</th>
                                     <th>Telefone</th>
                                     <th>Empresa</th>
+                                    <th>Tipo</th>
+                                    <th>Crédito</th>
                                     <th>Acções</th>
                                 </tr>
                             </thead>
@@ -517,6 +548,7 @@
                                         <option value="comunicacao">Comunicação</option>
                                         <option value="marketing">Marketing</option>
                                         <option value="combustivel">Combustível</option>
+                                        <option value="veiculo">Veículo / Matrícula</option>
                                         <option value="diversos">Diversos</option>
                                     </select>
                                 </div>
@@ -531,7 +563,7 @@
                                 <select id="cost-assigned-entity" class="form-input">
                                     <option value="">-- Não atribuir --</option>
                                 </select>
-                                <small>Selecione um funcionário ou cliente para associar este custo.</small>
+                                <small>Selecione um funcionário, cliente ou veículo/matrícula para associar este custo.</small>
                             </div>
 
                             <div class="form-row">
@@ -623,7 +655,23 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="driver-plate">Viatura (Placa)</label>
+                                    <label for="driver-type">Tipo de Motorista</label>
+                                    <select id="driver-type" class="form-input">
+                                        <option value="freelancer" selected>Freelancer</option>
+                                        <option value="official">Oficial Trago</option>
+                                    </select>
+                                    <small>Motoristas oficiais não têm acesso a comissões.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="driver-vehicle-id">Veículo registado</label>
+                                    <select id="driver-vehicle-id" class="form-input">
+                                        <option value="">-- Sem veículo associado --</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="driver-plate">Viatura (Placa manual)</label>
                                     <input type="text" id="driver-plate" class="form-input" placeholder="Ex: MXX-123-MP">
                                 </div>
                                 <div class="form-group">
@@ -636,6 +684,64 @@
                                 <button type="button" class="btn btn-secondary" onclick="showAddDriverForm(false)">Cancelar</button>
                             </div>
                         </form>
+                    </div>
+
+                    <div class="form-section section-spaced">
+                        <h3>Veículos</h3>
+                        <form id="form-add-veiculo" class="glass-card nested-form-card">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="vehicle-plate">Matrícula</label>
+                                    <input type="text" id="vehicle-plate" class="form-input" required placeholder="Ex: MXX-123-MP">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vehicle-type">Tipo</label>
+                                    <select id="vehicle-type" class="form-input">
+                                        <option value="mota">Mota</option>
+                                        <option value="carro">Carro</option>
+                                        <option value="carrinha">Carrinha</option>
+                                        <option value="outro">Outro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="vehicle-status">Estado</label>
+                                    <select id="vehicle-status" class="form-input">
+                                        <option value="ativo">Activo</option>
+                                        <option value="manutencao">Manutenção</option>
+                                        <option value="inativo">Inactivo</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="vehicle-brand">Marca</label>
+                                    <input type="text" id="vehicle-brand" class="form-input" placeholder="Ex: Honda">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vehicle-model">Modelo</label>
+                                    <input type="text" id="vehicle-model" class="form-input" placeholder="Ex: CB125">
+                                </div>
+                                <div class="form-group">
+                                    <label for="vehicle-notes">Notas</label>
+                                    <input type="text" id="vehicle-notes" class="form-input" placeholder="Seguro, combustível, manutenção...">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Adicionar Veículo</button>
+                        </form>
+                        <div class="table-wrapper scroll-compact section-spaced">
+                            <table class="data-table table-pedidos">
+                                <thead>
+                                    <tr>
+                                        <th>Matrícula</th>
+                                        <th>Tipo</th>
+                                        <th>Estado</th>
+                                        <th>Marca/Modelo</th>
+                                        <th>Acções</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vehicles-table-body"><tr><td colspan="5">A carregar...</td></tr></tbody>
+                            </table>
+                        </div>
                     </div>
                 
                     <div class="form-section section-spaced">
@@ -674,6 +780,19 @@
                                 <div class="form-group">
                                     <label for="client-endereco">Endereço (Opcional)</label>
                                     <input type="text" id="client-endereco" class="form-input">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="client-billing-type">Modelo de Pagamento</label>
+                                    <select id="client-billing-type" class="form-input">
+                                        <option value="prepaid">Normal / pagamento por entrega</option>
+                                        <option value="postpaid">Cliente pós-pago</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="client-credit-limit">Crédito Mensal (MZN)</label>
+                                    <input type="number" id="client-credit-limit" class="form-input" min="0" step="0.01" value="0">
                                 </div>
                             </div>
                             <div class="form-actions">
@@ -843,8 +962,24 @@
                             <input type="tel" id="edit-driver-phone" class="form-input" required>
                         </div>
                         
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-driver-type">Tipo de Motorista</label>
+                                <select id="edit-driver-type" class="form-input">
+                                    <option value="freelancer">Freelancer</option>
+                                    <option value="official">Oficial Trago</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-driver-vehicle-id">Veículo registado</label>
+                                <select id="edit-driver-vehicle-id" class="form-input">
+                                    <option value="">-- Sem veículo associado --</option>
+                                </select>
+                            </div>
+                        </div>
+                        
                         <div class="form-group">
-                            <label for="edit-driver-plate">Viatura (Placa)</label>
+                            <label for="edit-driver-plate">Viatura (Placa manual)</label>
                             <input type="text" id="edit-driver-plate" class="form-input">
                         </div>
                         
@@ -999,6 +1134,19 @@
                             <div class="form-group">
                                 <label for="edit-client-endereco">Endereço</label>
                                 <input type="text" id="edit-client-endereco" class="form-input">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="edit-client-billing-type">Modelo de Pagamento</label>
+                                <select id="edit-client-billing-type" class="form-input">
+                                    <option value="prepaid">Normal / pagamento por entrega</option>
+                                    <option value="postpaid">Cliente pós-pago</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-client-credit-limit">Crédito Mensal (MZN)</label>
+                                <input type="number" id="edit-client-credit-limit" class="form-input" min="0" step="0.01" value="0">
                             </div>
                         </div>
                     </div>

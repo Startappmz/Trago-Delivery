@@ -141,6 +141,13 @@
                             </div>
                         </div>
 
+                        <div class="detalhes-bloco pickup-guidance-card">
+                            <h3><i class="fas fa-box-open"></i> Orientação da Recolha</h3>
+                            <p id="detalhe-pickup-contact"><strong>Responsável:</strong> ...</p>
+                            <p id="detalhe-pickup-phone"><strong>Contacto:</strong> ...</p>
+                            <p id="detalhe-pickup-notes"><strong>Notas:</strong> ...</p>
+                        </div>
+
                         <div class="detalhes-bloco recipient-card">
                             <h3><i class="fas fa-user"></i> Destinatário</h3>
                             <p id="detalhe-cliente-nome"><strong>Nome:</strong> ...</p>
@@ -159,6 +166,10 @@
                                 <div class="form-group">
                                     <label for="codigo-finalizacao">Código de Verificação (5 dígitos)</label>
                                     <input type="text" id="codigo-finalizacao" maxlength="5" placeholder="ABC12" class="form-input">
+                                </div>
+                                <div class="form-group">
+                                    <label for="driver-delivery-notes">Detalhes/Comentários da Entrega</label>
+                                    <textarea id="driver-delivery-notes" rows="3" placeholder="Ex: pagamento recebido, cliente ausente, referência POS, observação da entrega..." class="form-input"></textarea>
                                 </div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-check-circle"></i>
@@ -369,6 +380,36 @@
         </div>
     </div>
     
+
+
+    <!-- Modal de confirmação de pagamento -->
+    <div id="payment-confirmation-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-alert">
+            <div class="modal-header">
+                <h3><i class="fas fa-money-check-alt"></i> Confirmar Pagamento</h3>
+                <button class="modal-close-btn" id="btn-close-payment-confirmation">×</button>
+            </div>
+            <div class="modal-body">
+                <p id="payment-confirmation-message">Código validado. Confirme o valor recebido.</p>
+                <div class="payment-confirmation-total">
+                    <span>Total a pagar</span>
+                    <strong id="payment-confirmation-total">0.00 MZN</strong>
+                </div>
+                <div class="form-group" id="payment-confirmation-amount-group">
+                    <label for="payment-confirmed-amount">Introduza exactamente o valor apresentado</label>
+                    <input type="number" id="payment-confirmed-amount" class="form-input" min="0" step="0.01" placeholder="0.00">
+                </div>
+                <small id="payment-confirmation-method">Método: —</small>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" id="btn-confirm-payment-finalize">
+                    <i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-cancel-payment-confirmation">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts - ORDEM CORRETA -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="templatemo-glass-admin-script.js"></script>

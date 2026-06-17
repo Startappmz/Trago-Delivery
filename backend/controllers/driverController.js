@@ -7,7 +7,7 @@ const { isValidId } = require('../utils/id');
 const User = require('../models/User');
 const DriverProfile = require('../models/DriverProfile');
 const Order = require('../models/Order');
-const { DRIVER_STATUS, ORDER_STATUS, FINANCIAL } = require('../utils/constants');
+const { DRIVER_STATUS, ORDER_STATUS, FINANCIAL, DRIVER_TYPES } = require('../utils/constants');
 const { parseCommissionRate } = require('../utils/helpers');
 
 exports.getAllDrivers = asyncHandler(async (_req, res) => {
@@ -40,7 +40,7 @@ exports.getDriverById = asyncHandler(async (req, res) => {
 exports.updateDriver = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const data = req.filtered || req.body;
-  const { nome, telefone, vehicle_plate, status, commissionRate } = data;
+  const { nome, telefone, vehicle_plate, vehicleId, status, driverType, commissionRate } = data;
 
   const user = await User.findById(id);
   if (!user || user.role !== 'driver') {
@@ -52,16 +52,21 @@ exports.updateDriver = asyncHandler(async (req, res) => {
   user.telefone = telefone;
   await user.save();
 
-  const parsedCommission = parseCommissionRate(
-    commissionRate,
-    FINANCIAL.DEFAULT_COMMISSION_RATE
-  );
+  const normalizedDriverType = Object.values(DRIVER_TYPES).includes(driverType)
+    ? driverType
+    : DRIVER_TYPES.FREELANCER;
+
+  const parsedCommission = normalizedDriverType === DRIVER_TYPES.OFFICIAL
+    ? 0
+    : parseCommissionRate(commissionRate, FINANCIAL.DEFAULT_COMMISSION_RATE);
 
   const profile = await DriverProfile.findOneAndUpdate(
     { user: id },
     {
       vehicle_plate,
+      vehicle: vehicleId || null,
       status,
+      driverType: normalizedDriverType,
       commissionRate: parsedCommission
     },
     { new: true, upsert: true }
@@ -101,7 +106,9 @@ exports.getAllDriversForAvailability = asyncHandler(async (_req, res) => {
         _id: p._id,
         vehicle_plate: p.vehicle_plate,
         status: p.status,
-        commissionRate: p.commissionRate
+        commissionRate: p.commissionRate,
+        driverType: p.driverType || DRIVER_TYPES.FREELANCER,
+        vehicle: p.vehicle || null
       }
     }))
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -157,7 +164,6 @@ exports.getDriverReport = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Perfil de motorista não encontrado.');
   }
-
   const orders = await Order.find({
     assigned_to_driver: profile._id,
     status: ORDER_STATUS.COMPLETED
@@ -185,6 +191,18 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   endOfMonth.setUTCHours(23, 59, 59, 999);
 
+  if ((profile.driverType || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL) {
+    return res.status(200).json({
+      canViewEarnings: false,
+      driverType: DRIVER_TYPES.OFFICIAL,
+      message: 'Motorista oficial não tem acesso a comissões no painel.',
+      commissionRate: 0,
+      totalGanhos: 0,
+      totalOrders: 0,
+      ordersList: []
+    });
+  }
+
   const orders = await Order.find({
     assigned_to_driver: profile._id,
     status: ORDER_STATUS.COMPLETED,
@@ -199,6 +217,8 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
   );
 
   res.status(200).json({
+    canViewEarnings: true,
+    driverType: profile.driverType || DRIVER_TYPES.FREELANCER,
     commissionRate: profile.commissionRate,
     totalGanhos,
     totalOrders: orders.length,

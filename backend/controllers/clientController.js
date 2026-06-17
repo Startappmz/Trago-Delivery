@@ -2,7 +2,34 @@ const asyncHandler = require('express-async-handler');
 const { isValidId } = require('../utils/id');
 const Client = require('../models/Client');
 const Order = require('../models/Order');
-const { ORDER_STATUS } = require('../utils/constants');
+const { ORDER_STATUS, CLIENT_BILLING_TYPES } = require('../utils/constants');
+
+function normalizeBillingPayload(data = {}, currentClient = null) {
+  const billingType = Object.values(CLIENT_BILLING_TYPES).includes(data.billing_type)
+    ? data.billing_type
+    : (currentClient?.billing_type || CLIENT_BILLING_TYPES.PREPAID);
+
+  const creditLimit = Number(data.credit_limit ?? currentClient?.credit_limit ?? 0) || 0;
+  const creditUsed = Number(data.credit_used ?? currentClient?.credit_used ?? 0) || 0;
+  let creditBalance;
+  if (data.credit_balance !== undefined) {
+    creditBalance = Number(data.credit_balance) || 0;
+  } else if (data.credit_limit !== undefined) {
+    // Quando o admin atribui/actualiza crédito, o disponível passa a ser o limite menos o já consumido.
+    creditBalance = Math.max(creditLimit - creditUsed, 0);
+  } else {
+    creditBalance = Number(currentClient?.credit_balance ?? creditLimit) || 0;
+  }
+
+  if (billingType === CLIENT_BILLING_TYPES.PREPAID) {
+    creditBalance = 0;
+  }
+
+  if (creditBalance > creditLimit) creditBalance = creditLimit;
+  if (creditBalance < 0) creditBalance = 0;
+
+  return { billingType, creditLimit, creditBalance, creditUsed };
+}
 
 exports.createClient = asyncHandler(async (req, res) => {
   const data = req.filtered || req.body;
@@ -14,6 +41,8 @@ exports.createClient = asyncHandler(async (req, res) => {
     throw new Error('Um cliente com este número de telefone já existe.');
   }
 
+  const billing = normalizeBillingPayload(data);
+
   const client = await Client.create({
     nome,
     telefone,
@@ -21,6 +50,10 @@ exports.createClient = asyncHandler(async (req, res) => {
     empresa,
     nuit,
     endereco,
+    billing_type: billing.billingType,
+    credit_limit: billing.creditLimit,
+    credit_balance: billing.billingType === CLIENT_BILLING_TYPES.POSTPAID ? billing.creditBalance : 0,
+    credit_used: billing.billingType === CLIENT_BILLING_TYPES.POSTPAID ? billing.creditUsed : 0,
     created_by_admin: req.user._id
   });
 
@@ -68,12 +101,18 @@ exports.updateClient = asyncHandler(async (req, res) => {
     }
   }
 
+  const billing = normalizeBillingPayload(data, client);
+
   client.nome = nome;
   client.telefone = telefone;
   client.email = email;
   client.empresa = empresa;
   client.nuit = nuit;
   client.endereco = endereco;
+  client.billing_type = billing.billingType;
+  client.credit_limit = billing.creditLimit;
+  client.credit_balance = billing.billingType === CLIENT_BILLING_TYPES.POSTPAID ? billing.creditBalance : 0;
+  client.credit_used = billing.billingType === CLIENT_BILLING_TYPES.POSTPAID ? billing.creditUsed : 0;
 
   await client.save();
 
@@ -113,21 +152,35 @@ exports.getStatement = asyncHandler(async (req, res) => {
   const end = new Date(endDate);
   end.setUTCHours(23, 59, 59, 999);
 
-  const clientId = id;
+  const client = await Client.findById(id).lean();
+  if (!client) {
+    res.status(404);
+    throw new Error('Cliente não encontrado.');
+  }
 
   const orders = await Order.find({
-    client: clientId,
+    client: id,
     status: ORDER_STATUS.COMPLETED,
     timestamp_completed: { $gte: start, $lte: end }
   })
     .sort({ timestamp_completed: 1 })
     .lean();
 
-  const totalValue = orders.reduce((total, order) => total + order.price, 0);
+  const totalValue = orders.reduce((total, order) => total + Number(order.price || 0), 0);
 
   res.status(200).json({
+    client,
     totalValue,
     totalOrders: orders.length,
+    credit: {
+      billing_type: client.billing_type,
+      limit: Number(client.credit_limit || 0),
+      balance: Number(client.credit_balance || 0),
+      used: Number(client.credit_used || 0),
+      credit_limit: Number(client.credit_limit || 0),
+      credit_balance: Number(client.credit_balance || 0),
+      credit_used: Number(client.credit_used || 0)
+    },
     ordersList: orders
   });
 });

@@ -7,6 +7,7 @@ const COMPANY_COST_CATEGORIES = [
   'comunicacao',
   'marketing',
   'combustivel',
+  'veiculo',
   'diversos'
 ];
 
@@ -24,6 +25,7 @@ const CompanyCost = createModel({
     createdBy: 'created_by',
     assignedUser: 'assigned_user',
     assignedClient: 'assigned_client',
+    assignedVehicle: 'assigned_vehicle',
     createdAt: 'created_at',
     updatedAt: 'updated_at'
   },
@@ -31,7 +33,8 @@ const CompanyCost = createModel({
     description: '',
     amount: 0,
     assignedUser: null,
-    assignedClient: null
+    assignedClient: null,
+    assignedVehicle: null
   },
   relations: {
     createdBy: {
@@ -49,6 +52,12 @@ const CompanyCost = createModel({
     assignedClient: {
       model: () => require('./Client'),
       localField: 'assignedClient',
+      foreignField: '_id',
+      single: true
+    },
+    assignedVehicle: {
+      model: () => require('./Vehicle'),
+      localField: 'assignedVehicle',
       foreignField: '_id',
       single: true
     }

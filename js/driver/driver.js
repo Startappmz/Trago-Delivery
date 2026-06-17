@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth('driver');
     connectDriverSocket();
     attachDriverEventListeners();
+    loadDriverProfileVisibility();
+    setInterval(() => checkDriverPaymentPendingAlerts(false), 120000);
     
     // Carrega a página inicial
     showDriverPage('lista-entregas');
@@ -91,6 +93,11 @@ function attachDriverEventListeners() {
         }
     });
 
+    // Modal de confirmação de pagamento
+    document.getElementById('btn-close-payment-confirmation')?.addEventListener('click', closePaymentConfirmationModal);
+    document.getElementById('btn-cancel-payment-confirmation')?.addEventListener('click', closePaymentConfirmationModal);
+    document.getElementById('btn-confirm-payment-finalize')?.addEventListener('click', submitPaymentConfirmation);
+
     // Listener do formulário de senha
     document.getElementById('form-change-password-driver')?.addEventListener('submit', handleChangePasswordDriver);
 }
@@ -157,7 +164,9 @@ async function loadMyDeliveries() {
                 mpesa: 'M-Pesa',
                 emola: 'e-Mola',
                 mkesh: 'mKesh',
-                bank_transfer: 'Transferencia bancaria'
+                bank_transfer: 'Transferência bancária',
+                pos: 'POS',
+                postpaid_credit: 'Cliente Pós-pago / Crédito'
             };
             card.innerHTML = `
                 <div class="entrega-card-header">
@@ -209,6 +218,13 @@ async function loadMyEarnings() {
         
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
+        if (data.canViewEarnings === false) {
+            totalGanhosEl.innerText = 'Restrito';
+            totalOrdersEl.innerText = data.totalOrders || 0;
+            commissionEl.innerText = '0 %';
+            tableBody.innerHTML = `<tr><td colspan="4">${data.message || 'Motorista oficial não tem acesso a comissões.'}</td></tr>`;
+            return;
+        }
         
         totalGanhosEl.innerText = formatMZN(data.totalGanhos);
         totalOrdersEl.innerText = data.totalOrders;
@@ -342,6 +358,9 @@ function fillDetalheEntrega(order) {
 
     document.getElementById('detalhe-cliente-nome').innerHTML = `<strong>Nome:</strong> ${escapeHtml(order.client_name || '—')}`;
     document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Telefone:</strong> ${escapeHtml(order.client_phone1 || '—')}`;
+    document.getElementById('detalhe-pickup-contact').innerHTML = `<strong>Responsável:</strong> ${escapeHtml(order.pickup_contact_name || '—')}`;
+    document.getElementById('detalhe-pickup-phone').innerHTML = `<strong>Contacto:</strong> ${escapeHtml(order.pickup_contact_phone || '—')}`;
+    document.getElementById('detalhe-pickup-notes').innerHTML = `<strong>Notas:</strong> ${escapeHtml(order.pickup_notes || 'Sem orientações adicionais')}`;
     document.getElementById('detalhe-cliente-endereco').innerHTML = buildDriverRouteSummary(order);
     
     const paymentMap = {
@@ -349,7 +368,9 @@ function fillDetalheEntrega(order) {
         mpesa: 'M-Pesa',
         emola: 'e-Mola',
         mkesh: 'mKesh',
-        bank_transfer: 'Transferência bancária'
+        bank_transfer: 'Transferência bancária',
+        pos: 'POS',
+        postpaid_credit: 'Cliente Pós-pago / Crédito'
     };
 
     const paymentEl = document
@@ -418,7 +439,7 @@ function fillDetalheEntrega(order) {
         btnIniciar.classList.add('hidden');
         formFinalizacao.classList.remove('hidden');
         formFinalizacao.reset();
-        formFinalizacao.onsubmit = (event) => handleCompleteDelivery(event, order._id);
+        formFinalizacao.onsubmit = (event) => handlePaymentPreview(event, order._id);
         return;
     }
 
@@ -571,35 +592,142 @@ async function handleStartDeliveryPhase(orderId) {
 /**
  * 4) Concluir ENTREGA (entrega final com código)
  */
-async function handleCompleteDelivery(event, orderId) {
+let pendingPaymentConfirmation = null;
+
+function closePaymentConfirmationModal() {
+    const modal = document.getElementById('payment-confirmation-modal');
+    if (modal) modal.classList.add('hidden');
+    pendingPaymentConfirmation = null;
+}
+
+function openPaymentConfirmationModal({ orderId, verificationCode, preview, notes }) {
+    pendingPaymentConfirmation = { orderId, verificationCode, preview, notes };
+    const modal = document.getElementById('payment-confirmation-modal');
+    const totalEl = document.getElementById('payment-confirmation-total');
+    const messageEl = document.getElementById('payment-confirmation-message');
+    const methodEl = document.getElementById('payment-confirmation-method');
+    const amountGroup = document.getElementById('payment-confirmation-amount-group');
+    const amountInput = document.getElementById('payment-confirmed-amount');
+    const button = document.getElementById('btn-confirm-payment-finalize');
+
+    const amount = Number(preview.totalToPay || 0).toFixed(2);
+    totalEl.textContent = `${amount} MZN`;
+    messageEl.textContent = preview.message || 'Código validado. Confirme o pagamento para finalizar.';
+    methodEl.textContent = `Método: ${preview.paymentMethodLabel || preview.paymentMethod || '—'}`;
+    amountInput.value = preview.requiresImmediatePayment ? '' : amount;
+    amountGroup.classList.toggle('hidden', !preview.requiresImmediatePayment);
+    button.innerHTML = preview.requiresImmediatePayment
+        ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
+        : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
+    modal.classList.remove('hidden');
+}
+
+async function handlePaymentPreview(event, orderId) {
     event.preventDefault();
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
-
     const verification_code = form.querySelector('#codigo-finalizacao').value.toUpperCase();
+    const notes = form.querySelector('#driver-delivery-notes')?.value || '';
+
     if (verification_code.length < 5) {
         showCustomAlert('Erro', 'O código deve ter 5 caracteres.', 'error');
         return;
     }
 
     submitButton.disabled = true;
-    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A finalizar...';
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A validar código...';
+
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${orderId}/payment-preview`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ verification_code })
+        });
+        const preview = await response.json();
+        if (!response.ok) throw new Error(preview.message || 'Falha ao validar código.');
+        openPaymentConfirmationModal({ orderId, verificationCode: verification_code, preview, notes });
+    } catch (error) {
+        console.error('Falha ao validar pagamento:', error);
+        showCustomAlert('Erro', error.message, 'error');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar Entrega';
+    }
+}
+
+async function submitPaymentConfirmation() {
+    if (!pendingPaymentConfirmation) return;
+    const { orderId, verificationCode, preview, notes } = pendingPaymentConfirmation;
+    const button = document.getElementById('btn-confirm-payment-finalize');
+    const amountInput = document.getElementById('payment-confirmed-amount');
+    const amount = preview.requiresImmediatePayment ? amountInput.value : preview.totalToPay;
+
+    if (preview.requiresImmediatePayment && amount === '') {
+        showCustomAlert('Erro', 'Introduza o valor recebido para confirmar.', 'error');
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A finalizar...';
 
     try {
         const response = await fetch(`${API_URL}/api/orders/${orderId}/complete`, {
             method: 'POST',
             headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ verification_code })
+            body: JSON.stringify({
+                verification_code: verificationCode,
+                payment_amount_confirmed: amount,
+                driver_delivery_notes: notes
+            })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message);
-        showCustomAlert('Sucesso', 'Entrega finalizada com sucesso!', 'success');
+        if (!response.ok) throw new Error(data.message || 'Falha ao finalizar entrega.');
+        closePaymentConfirmationModal();
+        showCustomAlert('Sucesso', data.message || 'Entrega finalizada e pagamento confirmado!', 'success');
         showListaEntregas();
     } catch (error) {
-        console.error('Falha ao finalizar entrega:', error);
+        console.error('Falha ao confirmar pagamento:', error);
         showCustomAlert('Erro', error.message, 'error');
-        submitButton.disabled = false;
-        submitButton.innerHTML = '<i class="fas fa-check-circle"></i> Finalizar Entrega';
+    } finally {
+        button.disabled = false;
+        button.innerHTML = preview.requiresImmediatePayment
+            ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
+            : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
+    }
+}
+
+
+async function loadDriverProfileVisibility() {
+    try {
+        const response = await fetch(`${API_URL}/api/auth/me`, { headers: getAuthHeaders('driver') });
+        if (!response.ok) return;
+        const data = await response.json();
+        const type = data.profile?.driverType || data.profile?.driver_type;
+        if (type === 'official') {
+            document.getElementById('driver-earnings')?.classList.add('hidden');
+            document.getElementById('mobile-nav-ganhos')?.classList.add('hidden');
+        }
+        const nameEl = document.getElementById('driver-name-header');
+        if (nameEl && data.nome) nameEl.textContent = data.nome;
+    } catch (error) {
+        console.warn('Falha ao carregar perfil do motorista:', error);
+    }
+}
+
+let lastDriverPaymentAlertAt = 0;
+async function checkDriverPaymentPendingAlerts(force = false) {
+    try {
+        const response = await fetch(`${API_URL}/api/orders/payment-pending`, { headers: getAuthHeaders('driver') });
+        if (!response.ok) return;
+        const data = await response.json();
+        const total = Number(data.total || 0);
+        const now = Date.now();
+        if (total > 0 && (force || now - lastDriverPaymentAlertAt > 120000)) {
+            lastDriverPaymentAlertAt = now;
+            showCustomAlert('Pagamento pendente', `${total} entrega(s) aguardam confirmação de pagamento/finalização.`, 'info');
+        }
+    } catch (error) {
+        console.warn('Falha ao verificar pagamentos pendentes:', error);
     }
 }
 

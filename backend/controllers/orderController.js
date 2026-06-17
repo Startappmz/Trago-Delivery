@@ -4,8 +4,19 @@ const sharp = require('sharp');
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const DriverProfile = require('../models/DriverProfile');
-const { DRIVER_STATUS, ORDER_STATUS, ADMIN_ROOM, FINANCIAL } = require('../utils/constants');
+const Client = require('../models/Client');
+const {
+  DRIVER_STATUS,
+  DRIVER_TYPES,
+  ORDER_STATUS,
+  ADMIN_ROOM,
+  FINANCIAL,
+  PAYMENT_METHODS,
+  PAYMENT_STATUS,
+  CLIENT_BILLING_TYPES
+} = require('../utils/constants');
 const { getDistanceFromLatLonInKm, parseCommissionRate } = require('../utils/helpers');
+const { buildRouteQuote } = require('../utils/geoPricing');
 const { getSocketUserMap } = require('../socketHandler');
 
 const MAX_IMAGE_BYTES = parseInt(process.env.UPLOAD_IMAGE_MAX_SIZE || `${5 * 1024 * 1024}`, 10);
@@ -96,6 +107,9 @@ exports.createOrder = asyncHandler(async (req, res) => {
     client_phone2,
     address_text,
     pickup_address_text,
+    pickup_contact_name,
+    pickup_contact_phone,
+    pickup_notes,
     price,
     service_price,
     lat,
@@ -111,11 +125,11 @@ exports.createOrder = asyncHandler(async (req, res) => {
   // também o fallback para req.body, garantindo que o método escolhido no
   // formulário nunca volta silenciosamente para "cash".
   const rawPaymentMethod = data.payment_method ?? req.body?.payment_method;
-  const allowedPaymentMethods = new Set(['cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer']);
-  const normalizedPayment =
+  const allowedPaymentMethods = new Set(Object.values(PAYMENT_METHODS));
+  let normalizedPayment =
     typeof rawPaymentMethod === 'string' && allowedPaymentMethods.has(rawPaymentMethod.trim())
       ? rawPaymentMethod.trim()
-      : 'cash';
+      : PAYMENT_METHODS.CASH;
 
   let imageUrl = null;
 
@@ -156,6 +170,30 @@ exports.createOrder = asyncHandler(async (req, res) => {
 
   const totalOrderPrice = baseServicePrice + Number(routeQuote.delivery_fee || 0);
 
+  let linkedClient = null;
+  if (clientId) {
+    linkedClient = await Client.findById(clientId);
+    if (!linkedClient) {
+      res.status(404);
+      throw new Error('Cliente registado não encontrado.');
+    }
+
+    if (linkedClient.billing_type === CLIENT_BILLING_TYPES.POSTPAID) {
+      normalizedPayment = PAYMENT_METHODS.POSTPAID_CREDIT;
+      const availableCredit = Number(linkedClient.credit_balance || 0);
+      if (availableCredit < totalOrderPrice) {
+        res.status(400);
+        throw new Error(`Crédito insuficiente para cliente pós-pago. Disponível: ${availableCredit.toFixed(2)} MZN.`);
+      }
+
+      linkedClient.credit_balance = availableCredit - totalOrderPrice;
+      linkedClient.credit_used = Number(linkedClient.credit_used || 0) + totalOrderPrice;
+      await linkedClient.save();
+    }
+  } else if (normalizedPayment === PAYMENT_METHODS.POSTPAID_CREDIT) {
+    normalizedPayment = PAYMENT_METHODS.CASH;
+  }
+
   let assignedDriverProfileId = null;
   let orderStatus = ORDER_STATUS.PENDING;
 
@@ -184,6 +222,9 @@ exports.createOrder = asyncHandler(async (req, res) => {
     client_phone2,
     pickup_address_text: pickup_address_text || '',
     pickup_address_coords: pickupCoordinates,
+    pickup_contact_name: pickup_contact_name || '',
+    pickup_contact_phone: pickup_contact_phone || '',
+    pickup_notes: pickup_notes || '',
     address_text,
     address_coords: coordinates,
     client: clientId || null,
@@ -192,7 +233,10 @@ exports.createOrder = asyncHandler(async (req, res) => {
     created_by_admin: req.user._id,
     assigned_to_driver: assignedDriverProfileId,
     status: orderStatus,
-    payment_method: normalizedPayment // ✅ DEFINITIVO
+    payment_method: normalizedPayment,
+    payment_status: normalizedPayment === PAYMENT_METHODS.POSTPAID_CREDIT
+      ? PAYMENT_STATUS.POSTPAID_MONTHLY
+      : PAYMENT_STATUS.UNPAID
   });
 
   // ===== SOCKET.IO =====
@@ -487,31 +531,135 @@ const startDeliveryPhase = asyncHandler(async (req, res) => {
 /**
  * Motorista conclui a ENTREGA (entrega final) – também usado pela rota antiga POST /:id/complete
  */
-const completeDelivery = asyncHandler(async (req, res) => {
-  const data = req.filtered || req.body;
-  const { id } = req.params;
-  const { verification_code } = data;
+const getImmediatePaymentRequired = (order) => order.payment_method !== PAYMENT_METHODS.POSTPAID_CREDIT;
 
+const paymentMethodLabel = (method) => ({
+  [PAYMENT_METHODS.CASH]: 'Dinheiro',
+  [PAYMENT_METHODS.MPESA]: 'M-Pesa',
+  [PAYMENT_METHODS.EMOLA]: 'e-Mola',
+  [PAYMENT_METHODS.MKESH]: 'mKesh',
+  [PAYMENT_METHODS.BANK_TRANSFER]: 'Transferência Bancária',
+  [PAYMENT_METHODS.POS]: 'POS',
+  [PAYMENT_METHODS.POSTPAID_CREDIT]: 'Cliente Pós-pago'
+}[method] || method || '—');
+
+const validateDriverAndOrder = async (req, orderId) => {
   const driverProfile = await DriverProfile.findOne({ user: req.user._id });
   if (!driverProfile) {
-    res.status(404);
-    throw new Error('Perfil de motorista não encontrado.');
+    const error = new Error('Perfil de motorista não encontrado.');
+    error.statusCode = 404;
+    throw error;
   }
 
-  const order = await Order.findById(id);
+  const order = await Order.findById(orderId);
   if (!order) {
-    res.status(404);
-    throw new Error('Encomenda não encontrada.');
+    const error = new Error('Encomenda não encontrada.');
+    error.statusCode = 404;
+    throw error;
   }
 
   if (String(order.assigned_to_driver || '') !== String(driverProfile._id)) {
-    res.status(403);
-    throw new Error('Não autorizado para esta encomenda.');
+    const error = new Error('Não autorizado para esta encomenda.');
+    error.statusCode = 403;
+    throw error;
   }
 
-  if (order.verification_code !== verification_code.toUpperCase()) {
+  return { driverProfile, order };
+};
+
+exports.previewDeliveryPayment = asyncHandler(async (req, res) => {
+  const data = req.filtered || req.body;
+  const { id } = req.params;
+  const verificationCode = String(data.verification_code || '').toUpperCase();
+  const { driverProfile, order } = await validateDriverAndOrder(req, id);
+
+  if (order.verification_code !== verificationCode) {
     res.status(400);
     throw new Error('Código de verificação incorreto.');
+  }
+
+  if (order.status !== ORDER_STATUS.DELIVERY_IN_PROGRESS) {
+    res.status(400);
+    throw new Error('Esta encomenda não está na fase de entrega para confirmação de pagamento.');
+  }
+
+  const now = new Date();
+  if (getImmediatePaymentRequired(order)) {
+    order.payment_status = PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION;
+  }
+  order.payment_confirmation_requested_at = now;
+  await order.save();
+
+  const io = req.app.get('socketio');
+  if (io && getImmediatePaymentRequired(order)) {
+    const payload = {
+      id: order._id,
+      clientName: order.client_name,
+      driverId: driverProfile._id,
+      amount: Number(order.price || 0),
+      paymentMethod: order.payment_method
+    };
+    io.to(ADMIN_ROOM).emit('payment_confirmation_pending', payload);
+    io.to(String(driverProfile.user)).emit('payment_confirmation_pending', payload);
+  }
+
+  res.status(200).json({
+    orderId: order._id,
+    totalToPay: Number(order.price || 0),
+    paymentMethod: order.payment_method,
+    paymentMethodLabel: paymentMethodLabel(order.payment_method),
+    requiresImmediatePayment: getImmediatePaymentRequired(order),
+    paymentStatus: order.payment_status,
+    message: getImmediatePaymentRequired(order)
+      ? 'Código validado. Confirme o valor recebido para finalizar.'
+      : 'Código validado. Cliente pós-pago: sem cobrança no acto.'
+  });
+});
+
+/**
+ * Motorista conclui a ENTREGA (entrega final) – também usado pela rota antiga POST /:id/complete
+ */
+const completeDelivery = asyncHandler(async (req, res) => {
+  const data = req.filtered || req.body;
+  const { id } = req.params;
+  const verificationCode = String(data.verification_code || '').toUpperCase();
+  const paymentAmountConfirmed = data.payment_amount_confirmed;
+  const driverDeliveryNotes = String(data.driver_delivery_notes || '').trim().slice(0, 1000);
+
+  const { driverProfile, order } = await validateDriverAndOrder(req, id);
+
+  if (order.verification_code !== verificationCode) {
+    res.status(400);
+    throw new Error('Código de verificação incorreto.');
+  }
+
+  const requiresImmediatePayment = getImmediatePaymentRequired(order);
+  const totalPrice = Number(order.price || 0);
+
+  if (requiresImmediatePayment) {
+    const confirmed = Number(paymentAmountConfirmed);
+    if (Number.isNaN(confirmed)) {
+      res.status(400);
+      throw new Error('Introduza o valor recebido para confirmar o pagamento.');
+    }
+
+    const expectedCents = Math.round(totalPrice * 100);
+    const confirmedCents = Math.round(confirmed * 100);
+    if (expectedCents !== confirmedCents) {
+      order.payment_status = PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION;
+      order.payment_confirmation_requested_at = order.payment_confirmation_requested_at || new Date();
+      await order.save();
+      res.status(400);
+      throw new Error(`Valor divergente. O valor correto a confirmar é ${totalPrice.toFixed(2)} MZN.`);
+    }
+
+    order.payment_confirmed_amount = confirmed;
+    order.payment_status = PAYMENT_STATUS.PAID;
+    order.payment_confirmed_at = new Date();
+  } else {
+    order.payment_confirmed_amount = 0;
+    order.payment_status = PAYMENT_STATUS.POSTPAID_MONTHLY;
+    order.payment_confirmed_at = new Date();
   }
 
   const now = new Date();
@@ -531,17 +679,17 @@ const completeDelivery = asyncHandler(async (req, res) => {
   }
   order.deliveryCompletedAt = now;
 
-  // Cálculo financeiro
-  const commissionRate = parseCommissionRate(
-    driverProfile.commissionRate,
-    FINANCIAL.DEFAULT_COMMISSION_RATE
-  );
-  const totalPrice = order.price;
+  // Cálculo financeiro: oficiais não recebem comissão no painel.
+  const driverType = driverProfile.driverType || DRIVER_TYPES.FREELANCER;
+  const commissionRate = driverType === DRIVER_TYPES.OFFICIAL
+    ? 0
+    : parseCommissionRate(driverProfile.commissionRate, FINANCIAL.DEFAULT_COMMISSION_RATE);
   const driverValue = totalPrice * (commissionRate / 100);
   const companyValue = totalPrice - driverValue;
 
   order.valor_motorista = driverValue;
   order.valor_empresa = companyValue;
+  order.driver_delivery_notes = driverDeliveryNotes;
   order.status = ORDER_STATUS.COMPLETED;
   order.timestamp_completed = now;
   await order.save();
@@ -556,7 +704,7 @@ const completeDelivery = asyncHandler(async (req, res) => {
     newStatus: driverProfile.status
   });
 
-  res.status(200).json({ message: 'Entrega finalizada com sucesso!' });
+  res.status(200).json({ message: 'Entrega finalizada e pagamento confirmado com sucesso!', order });
 });
 
 // Exportações das fases (nomes novos + compatibilidade)
@@ -567,6 +715,35 @@ exports.completeDelivery = completeDelivery;
 
 // Compatibilidade com a rota antiga /:id/start
 exports.startDelivery = startPickup;
+
+
+exports.getPaymentPendingOrders = asyncHandler(async (req, res) => {
+  if (!['admin', 'driver'].includes(req.user?.role)) {
+    res.status(403);
+    throw new Error('Acesso restrito a administradores e motoristas.');
+  }
+
+  const query = {
+    status: ORDER_STATUS.DELIVERY_IN_PROGRESS,
+    payment_status: PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION
+  };
+
+  if (req.user.role === 'driver') {
+    const driverProfile = await DriverProfile.findOne({ user: req.user._id });
+    if (!driverProfile) {
+      res.status(404);
+      throw new Error('Perfil de motorista não encontrado.');
+    }
+    query.assigned_to_driver = driverProfile._id;
+  }
+
+  const orders = await Order.find(query)
+    .populate({ path: 'assigned_to_driver', populate: { path: 'user', select: 'nome telefone' } })
+    .sort({ payment_confirmation_requested_at: -1 })
+    .lean();
+
+  res.status(200).json({ total: orders.length, orders });
+});
 
 // -----------------------------------------------------------------------------
 // LISTAS PARA ADMIN
@@ -662,6 +839,19 @@ exports.cancelOrder = asyncHandler(async (req, res) => {
   order.cancelledAt = new Date();
   order.cancelledBy = req.user._id;
   order.cancelReason = (reason || 'Cancelado pelo administrador').slice(0, 500);
+
+  if (order.payment_method === PAYMENT_METHODS.POSTPAID_CREDIT && order.client) {
+    const linkedClient = await Client.findById(order.client);
+    if (linkedClient) {
+      const refundAmount = Number(order.price || 0);
+      linkedClient.credit_balance = Math.min(
+        Number(linkedClient.credit_limit || 0),
+        Number(linkedClient.credit_balance || 0) + refundAmount
+      );
+      linkedClient.credit_used = Math.max(0, Number(linkedClient.credit_used || 0) - refundAmount);
+      await linkedClient.save();
+    }
+  }
 
   await order.save();
 

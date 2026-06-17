@@ -5,6 +5,7 @@ const { body, param } = require('express-validator');
 const orderController = require('../controllers/orderController');
 const { protect, admin, driver } = require('../middleware/authMiddleware');
 const { validateRequest } = require('../middleware/validateRequest');
+const { PAYMENT_METHODS } = require('../utils/constants');
 
 const router = express.Router();
 
@@ -47,6 +48,9 @@ router.post(
     body('route_distance_km').optional({ checkFalsy: true }).isFloat({ min: 0 }),
     body('route_duration_min').optional({ checkFalsy: true }).isFloat({ min: 0 }),
     body('pickup_address_text').optional({ checkFalsy: true }).trim(),
+    body('pickup_contact_name').optional({ checkFalsy: true }).trim().isLength({ max: 120 }),
+    body('pickup_contact_phone').optional({ checkFalsy: true }).trim().isLength({ max: 40 }),
+    body('pickup_notes').optional({ checkFalsy: true }).trim().isLength({ max: 1000 }),
     body('pickup_lat').optional({ checkFalsy: true }).isFloat(),
     body('pickup_lng').optional({ checkFalsy: true }).isFloat(),
     body('lat').optional({ checkFalsy: true }).isFloat(),
@@ -56,7 +60,7 @@ router.post(
     body('payment_method')
       .optional({ checkFalsy: true })
       .trim()
-      .isIn(['cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer'])
+      .isIn(Object.values(PAYMENT_METHODS))
       .withMessage('Método de pagamento inválido.')
   ],
   validateRequest,
@@ -69,6 +73,25 @@ router.post(
 
 // lista das minhas entregas activas
 router.get('/my-deliveries', protect, driver, orderController.getMyDeliveries);
+
+
+// Pendências de pagamento: admin vê todas; motorista vê apenas as suas.
+router.get('/payment-pending', protect, orderController.getPaymentPendingOrders);
+
+router.post(
+  '/:id/payment-preview',
+  protect,
+  driver,
+  [
+    param('id', 'ID da encomenda inválido').isMongoId(),
+    body('verification_code', 'O código de verificação é obrigatório e deve ter 5 caracteres')
+      .trim()
+      .isLength({ min: 5, max: 5 })
+  ],
+  validateRequest,
+  orderController.previewDeliveryPayment
+);
+
 
 // NOVO: iniciar RECOLHA (motorista sai da central)
 // Compatível com a lógica nova de fases
@@ -110,7 +133,9 @@ router.post(
     param('id', 'ID da encomenda inválido').isMongoId(),
     body('verification_code', 'O código de verificação é obrigatório e deve ter 5 caracteres')
       .trim()
-      .isLength({ min: 5, max: 5 })
+      .isLength({ min: 5, max: 5 }),
+    body('payment_amount_confirmed').optional({ checkFalsy: true }).isFloat({ min: 0 }),
+    body('driver_delivery_notes').optional({ checkFalsy: true }).trim().isLength({ max: 1000 })
   ],
   validateRequest,
   orderController.completeDelivery
@@ -136,7 +161,9 @@ router.post(
     param('id', 'ID da encomenda inválido').isMongoId(),
     body('verification_code', 'O código de verificação é obrigatório e deve ter 5 caracteres')
       .trim()
-      .isLength({ min: 5, max: 5 })
+      .isLength({ min: 5, max: 5 }),
+    body('payment_amount_confirmed').optional({ checkFalsy: true }).isFloat({ min: 0 }),
+    body('driver_delivery_notes').optional({ checkFalsy: true }).trim().isLength({ max: 1000 })
   ],
   validateRequest,
   orderController.completeDelivery

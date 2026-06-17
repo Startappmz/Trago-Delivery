@@ -80,6 +80,7 @@ app.use('/api/stats', require('./routes/statsRoutes'));
 app.use('/api/clients', require('./routes/clientRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/costs', require('./routes/costRoutes')); // <- NOVO: custos da empresa
+app.use('/api/vehicles', require('./routes/vehicleRoutes')); // frota e custos por matrícula
 app.use('/api/geo', require('./routes/geoRoutes')); // Geolocalização e preço por distância
 
 // Healthcheck
