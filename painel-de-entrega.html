@@ -165,7 +165,7 @@
                                 <p id="entrega-status" class="status-info">Entrega em progresso...</p>
                                 <div class="form-group">
                                     <label for="codigo-finalizacao">Código de Verificação (5 dígitos)</label>
-                                    <input type="text" id="codigo-finalizacao" maxlength="5" placeholder="ABC12" class="form-input">
+                                    <input type="text" id="codigo-finalizacao" maxlength="5" minlength="5" placeholder="ABC12" class="form-input" autocomplete="off" required>
                                 </div>
                                 <div class="form-group">
                                     <label for="driver-delivery-notes">Detalhes/Comentários da Entrega</label>
@@ -249,10 +249,20 @@
                     <span>Voltar às Entregas</span>
                 </button>
                 
-                <h2 class="section-title">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    Meus Ganhos (Este Mês)
-                </h2>
+                <div class="driver-earnings-header">
+                    <h2 class="section-title" id="driver-earnings-title">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        Meus Ganhos — Este Mês
+                    </h2>
+                    <div class="form-group compact-select-group driver-period-group">
+                        <label for="driver-earnings-period-select">Período</label>
+                        <select id="driver-earnings-period-select" class="form-input">
+                            <option value="day">Hoje</option>
+                            <option value="week">Esta Semana</option>
+                            <option value="month" selected>Este Mês</option>
+                        </select>
+                    </div>
+                </div>
                 
                 <div class="stats-grid">
                     <div class="glass-card stat-card">
@@ -277,8 +287,18 @@
                     </div>
                 </div>
 
-                <div class="table-section">
-                    <h3>Extrato de Entregas Concluídas</h3>
+                <div class="table-section driver-completed-section">
+                    <div class="table-section-header driver-completed-header">
+                        <h3 id="driver-earnings-table-title">Extrato de Entregas Concluídas — Este Mês</h3>
+                        <div class="form-group compact-select-group driver-period-group driver-completed-period-group">
+                            <label for="driver-completed-period-select">Filtrar extrato</label>
+                            <select id="driver-completed-period-select" class="form-input">
+                                <option value="day">Hoje</option>
+                                <option value="week">Esta Semana</option>
+                                <option value="month" selected>Este Mês</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="table-wrapper">
                         <table class="data-table">
                             <thead>
@@ -397,7 +417,7 @@
                 </div>
                 <div class="form-group" id="payment-confirmation-amount-group">
                     <label for="payment-confirmed-amount">Introduza exactamente o valor apresentado</label>
-                    <input type="number" id="payment-confirmed-amount" class="form-input" min="0" step="0.01" placeholder="0.00">
+                    <input type="number" id="payment-confirmed-amount" class="form-input" min="0" step="0.01" placeholder="0.00" autocomplete="off">
                 </div>
                 <small id="payment-confirmation-method">Método: —</small>
             </div>

@@ -3486,3 +3486,35 @@ textarea,
     align-items: flex-start;
   }
 }
+
+/* Trago 2026 — filtro explícito no Extrato de Entregas Concluídas */
+.driver-completed-header,
+.table-section-header.driver-completed-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.driver-completed-header h3 {
+  margin: 0;
+}
+.driver-completed-period-group {
+  margin-bottom: 0 !important;
+}
+.muted-value {
+  color: var(--muted-text, #6b7280);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .driver-completed-header,
+  .table-section-header.driver-completed-header {
+    align-items: stretch;
+  }
+  .driver-completed-period-group {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+}
