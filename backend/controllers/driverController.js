@@ -210,19 +210,6 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
 
   const range = getPeriodRange(req.query?.period || 'month');
 
-  if ((profile.driverType || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL) {
-    return res.status(200).json({
-      canViewEarnings: false,
-      driverType: DRIVER_TYPES.OFFICIAL,
-      message: 'Motorista oficial não tem acesso a comissões no painel.',
-      commissionRate: 0,
-      totalGanhos: 0,
-      totalOrders: 0,
-      ordersList: [],
-      period: { key: range.key, label: range.label, start: range.start, end: range.end }
-    });
-  }
-
   const orders = await Order.find({
     assigned_to_driver: profile._id,
     status: ORDER_STATUS.COMPLETED,
@@ -231,15 +218,16 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
     .sort({ timestamp_completed: -1 })
     .lean();
 
-  const totalGanhos = orders.reduce(
-    (total, order) => total + order.valor_motorista,
-    0
-  );
+  const isOfficial = (profile.driverType || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL;
+  const totalGanhos = isOfficial
+    ? 0
+    : orders.reduce((total, order) => total + Number(order.valor_motorista || 0), 0);
 
   res.status(200).json({
-    canViewEarnings: true,
+    canViewEarnings: !isOfficial,
     driverType: profile.driverType || DRIVER_TYPES.FREELANCER,
-    commissionRate: profile.commissionRate,
+    message: isOfficial ? 'Motorista oficial pode ver entregas concluídas, mas não comissões.' : undefined,
+    commissionRate: isOfficial ? 0 : profile.commissionRate,
     totalGanhos,
     totalOrders: orders.length,
     ordersList: orders,

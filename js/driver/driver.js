@@ -99,8 +99,18 @@ function attachDriverEventListeners() {
     document.getElementById('btn-confirm-payment-finalize')?.addEventListener('click', submitPaymentConfirmation);
 
     const earningsPeriodSelect = document.getElementById('driver-earnings-period-select');
+    const completedPeriodSelect = document.getElementById('driver-completed-period-select');
+    const syncDriverPeriodAndLoad = (period) => {
+        const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
+        if (earningsPeriodSelect) earningsPeriodSelect.value = safePeriod;
+        if (completedPeriodSelect) completedPeriodSelect.value = safePeriod;
+        loadMyEarnings(safePeriod);
+    };
     if (earningsPeriodSelect) {
-        earningsPeriodSelect.addEventListener('change', () => loadMyEarnings(earningsPeriodSelect.value));
+        earningsPeriodSelect.addEventListener('change', () => syncDriverPeriodAndLoad(earningsPeriodSelect.value));
+    }
+    if (completedPeriodSelect) {
+        completedPeriodSelect.addEventListener('change', () => syncDriverPeriodAndLoad(completedPeriodSelect.value));
     }
 
     // Listener do formulário de senha
@@ -131,7 +141,9 @@ function showDriverPage(pageId) {
         document.getElementById('form-change-password-driver')?.reset();
     }
     if (pageId === 'meus-ganhos') {
-        const period = document.getElementById('driver-earnings-period-select')?.value || 'month';
+        const period = document.getElementById('driver-completed-period-select')?.value
+            || document.getElementById('driver-earnings-period-select')?.value
+            || 'month';
         loadMyEarnings(period); 
     }
     if (pageId === 'detalhe-entrega') {
@@ -210,6 +222,11 @@ async function loadMyEarnings(period = 'month') {
     
     if (!totalGanhosEl || !totalOrdersEl || !commissionEl || !tableBody) return;
 
+    const topPeriodSelect = document.getElementById('driver-earnings-period-select');
+    const tablePeriodSelect = document.getElementById('driver-completed-period-select');
+    if (topPeriodSelect) topPeriodSelect.value = safePeriod;
+    if (tablePeriodSelect) tablePeriodSelect.value = safePeriod;
+
     totalGanhosEl.innerText = '...';
     totalOrdersEl.innerText = '...';
     commissionEl.innerText = '... %';
@@ -231,32 +248,34 @@ async function loadMyEarnings(period = 'month') {
         if (titleEl) titleEl.innerHTML = `<i class="fas fa-file-invoice-dollar"></i> Meus Ganhos — ${periodLabel}`;
         if (tableTitleEl) tableTitleEl.textContent = `Extrato de Entregas Concluídas — ${periodLabel}`;
 
-        if (data.canViewEarnings === false) {
+        const canViewEarnings = data.canViewEarnings !== false;
+        if (!canViewEarnings) {
             totalGanhosEl.innerText = 'Restrito';
             totalOrdersEl.innerText = data.totalOrders || 0;
-            commissionEl.innerText = '0 %';
-            tableBody.innerHTML = `<tr><td colspan="4">${data.message || 'Motorista oficial não tem acesso a comissões.'}</td></tr>`;
-            return;
+            commissionEl.innerText = 'Restrito';
+        } else {
+            totalGanhosEl.innerText = formatMZN(data.totalGanhos);
+            totalOrdersEl.innerText = data.totalOrders;
+            commissionEl.innerText = `${data.commissionRate} %`;
         }
         
-        totalGanhosEl.innerText = formatMZN(data.totalGanhos);
-        totalOrdersEl.innerText = data.totalOrders;
-        commissionEl.innerText = `${data.commissionRate} %`;
-        
         tableBody.innerHTML = ''; 
-        if (data.ordersList.length === 0) {
+        if (!Array.isArray(data.ordersList) || data.ordersList.length === 0) {
             const periodText = data.period?.label || (safePeriod === 'day' ? 'hoje' : safePeriod === 'week' ? 'esta semana' : 'este mês');
             tableBody.innerHTML = `<tr><td colspan="4">Nenhuma entrega concluída para ${periodText}.</td></tr>`;
             return;
         }
         
         data.ordersList.forEach(order => {
+            const orderId = String(order._id || order.id || '');
+            const completedAt = order.timestamp_completed ? new Date(order.timestamp_completed).toLocaleDateString('pt-MZ') : '—';
+            const driverValue = canViewEarnings ? formatMZN(Number(order.valor_motorista || 0)) : 'Restrito';
             tableBody.innerHTML += `
                 <tr>
-                    <td>${new Date(order.timestamp_completed).toLocaleDateString('pt-MZ')}</td>
-                    <td>#${order._id.slice(-6)}</td>
-                    <td>${formatMZN(order.price)}</td>
-                    <td class="value-success">${formatMZN(order.valor_motorista)}</td>
+                    <td>${completedAt}</td>
+                    <td>#${orderId.slice(-6)}</td>
+                    <td>${formatMZN(Number(order.price || 0))}</td>
+                    <td class="${canViewEarnings ? 'value-success' : 'muted-value'}">${driverValue}</td>
                 </tr>
             `;
         });
@@ -615,7 +634,6 @@ function closePaymentConfirmationModal() {
 }
 
 function openPaymentConfirmationModal({ orderId, verificationCode, preview, notes }) {
-    pendingPaymentConfirmation = { orderId, verificationCode, preview, notes };
     const modal = document.getElementById('payment-confirmation-modal');
     const totalEl = document.getElementById('payment-confirmation-total');
     const messageEl = document.getElementById('payment-confirmation-message');
@@ -624,16 +642,33 @@ function openPaymentConfirmationModal({ orderId, verificationCode, preview, note
     const amountInput = document.getElementById('payment-confirmed-amount');
     const button = document.getElementById('btn-confirm-payment-finalize');
 
+    if (!modal || !totalEl || !messageEl || !methodEl || !amountGroup || !amountInput || !button) {
+        showCustomAlert('Erro', 'Não foi possível abrir a confirmação de pagamento. Actualize a página e tente novamente.', 'error');
+        return;
+    }
+
+    const requiresImmediatePayment = preview.requiresImmediatePayment !== false;
     const amount = Number(preview.totalToPay || 0).toFixed(2);
+    pendingPaymentConfirmation = {
+        orderId,
+        verificationCode,
+        preview: { ...preview, requiresImmediatePayment },
+        notes
+    };
+
     totalEl.textContent = `${amount} MZN`;
     messageEl.textContent = preview.message || 'Código validado. Confirme o pagamento para finalizar.';
     methodEl.textContent = `Método: ${preview.paymentMethodLabel || preview.paymentMethod || '—'}`;
-    amountInput.value = preview.requiresImmediatePayment ? '' : amount;
-    amountGroup.classList.toggle('hidden', !preview.requiresImmediatePayment);
-    button.innerHTML = preview.requiresImmediatePayment
+    amountInput.value = requiresImmediatePayment ? '' : amount;
+    amountInput.required = requiresImmediatePayment;
+    amountGroup.classList.toggle('hidden', !requiresImmediatePayment);
+    button.innerHTML = requiresImmediatePayment
         ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
         : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
     modal.classList.remove('hidden');
+    if (requiresImmediatePayment) {
+        setTimeout(() => amountInput.focus(), 80);
+    }
 }
 
 async function handlePaymentPreview(event, orderId) {
@@ -674,10 +709,12 @@ async function submitPaymentConfirmation() {
     const { orderId, verificationCode, preview, notes } = pendingPaymentConfirmation;
     const button = document.getElementById('btn-confirm-payment-finalize');
     const amountInput = document.getElementById('payment-confirmed-amount');
-    const amount = preview.requiresImmediatePayment ? amountInput.value : preview.totalToPay;
+    const requiresImmediatePayment = preview.requiresImmediatePayment !== false;
+    const amount = requiresImmediatePayment ? amountInput.value : preview.totalToPay;
 
-    if (preview.requiresImmediatePayment && amount === '') {
+    if (requiresImmediatePayment && String(amount).trim() === '') {
         showCustomAlert('Erro', 'Introduza o valor recebido para confirmar.', 'error');
+        amountInput.focus();
         return;
     }
 
@@ -704,7 +741,7 @@ async function submitPaymentConfirmation() {
         showCustomAlert('Erro', error.message, 'error');
     } finally {
         button.disabled = false;
-        button.innerHTML = preview.requiresImmediatePayment
+        button.innerHTML = requiresImmediatePayment
             ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
             : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
     }
@@ -718,8 +755,12 @@ async function loadDriverProfileVisibility() {
         const data = await response.json();
         const type = data.profile?.driverType || data.profile?.driver_type;
         if (type === 'official') {
-            document.getElementById('driver-earnings')?.classList.add('hidden');
-            document.getElementById('mobile-nav-ganhos')?.classList.add('hidden');
+            const desktopBtn = document.getElementById('driver-earnings');
+            const mobileBtn = document.getElementById('mobile-nav-ganhos');
+            desktopBtn?.classList.remove('hidden');
+            mobileBtn?.classList.remove('hidden');
+            desktopBtn?.setAttribute('title', 'Ver entregas concluídas. Comissões restritas para motoristas oficiais.');
+            mobileBtn?.setAttribute('title', 'Ver entregas concluídas. Comissões restritas para motoristas oficiais.');
         }
         const nameEl = document.getElementById('driver-name-header');
         if (nameEl && data.nome) nameEl.textContent = data.nome;

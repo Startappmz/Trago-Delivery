@@ -1068,10 +1068,13 @@ const routeDrivers = async (req: Request, path: string, method: string) => {
     const orders = (data || []).map(fromOrder);
     const isOfficial = String(profile.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL;
     return json({
+      canViewEarnings: !isOfficial,
+      driverType: profile.driver_type || DRIVER_TYPES.FREELANCER,
+      message: isOfficial ? 'Motorista oficial pode ver entregas concluídas, mas não comissões.' : undefined,
       commissionRate: isOfficial ? 0 : Number(profile.commission_rate || 20),
       totalGanhos: isOfficial ? 0 : orders.reduce((sum: number, order: AnyRecord) => sum + Number(order.valor_motorista || 0), 0),
       totalOrders: orders.length,
-      ordersList: isOfficial ? [] : orders,
+      ordersList: orders,
       period: { key: range.key, label: range.label, start: range.start.toISOString(), end: range.end.toISOString() }
     });
   }
