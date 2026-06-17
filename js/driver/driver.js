@@ -98,6 +98,11 @@ function attachDriverEventListeners() {
     document.getElementById('btn-cancel-payment-confirmation')?.addEventListener('click', closePaymentConfirmationModal);
     document.getElementById('btn-confirm-payment-finalize')?.addEventListener('click', submitPaymentConfirmation);
 
+    const earningsPeriodSelect = document.getElementById('driver-earnings-period-select');
+    if (earningsPeriodSelect) {
+        earningsPeriodSelect.addEventListener('change', () => loadMyEarnings(earningsPeriodSelect.value));
+    }
+
     // Listener do formulário de senha
     document.getElementById('form-change-password-driver')?.addEventListener('submit', handleChangePasswordDriver);
 }
@@ -126,7 +131,8 @@ function showDriverPage(pageId) {
         document.getElementById('form-change-password-driver')?.reset();
     }
     if (pageId === 'meus-ganhos') {
-        loadMyEarnings(); 
+        const period = document.getElementById('driver-earnings-period-select')?.value || 'month';
+        loadMyEarnings(period); 
     }
     if (pageId === 'detalhe-entrega') {
         requestAnimationFrame(() => window.TragoDriverMap?.invalidate?.());
@@ -191,13 +197,16 @@ async function loadMyDeliveries() {
 
 }
 
-async function loadMyEarnings() {
+async function loadMyEarnings(period = 'month') {
     const formatMZN = (value) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(value);
+    const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
 
     const totalGanhosEl = document.getElementById('driver-total-ganhos');
     const totalOrdersEl = document.getElementById('driver-total-entregas');
     const commissionEl = document.getElementById('driver-commission-rate');
     const tableBody = document.getElementById('driver-earnings-table-body');
+    const titleEl = document.getElementById('driver-earnings-title');
+    const tableTitleEl = document.getElementById('driver-earnings-table-title');
     
     if (!totalGanhosEl || !totalOrdersEl || !commissionEl || !tableBody) return;
 
@@ -207,7 +216,7 @@ async function loadMyEarnings() {
     tableBody.innerHTML = '<tr><td colspan="4">A carregar...</td></tr>';
 
     try {
-        const response = await fetch(`${API_URL}/api/drivers/my-earnings`, {
+        const response = await fetch(`${API_URL}/api/drivers/my-earnings?period=${encodeURIComponent(safePeriod)}`, {
             method: 'GET',
             headers: getAuthHeaders('driver')
         });
@@ -218,6 +227,10 @@ async function loadMyEarnings() {
         
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
+        const periodLabel = data.period?.label || (safePeriod === 'day' ? 'Hoje' : safePeriod === 'week' ? 'Esta Semana' : 'Este Mês');
+        if (titleEl) titleEl.innerHTML = `<i class="fas fa-file-invoice-dollar"></i> Meus Ganhos — ${periodLabel}`;
+        if (tableTitleEl) tableTitleEl.textContent = `Extrato de Entregas Concluídas — ${periodLabel}`;
+
         if (data.canViewEarnings === false) {
             totalGanhosEl.innerText = 'Restrito';
             totalOrdersEl.innerText = data.totalOrders || 0;
@@ -232,7 +245,8 @@ async function loadMyEarnings() {
         
         tableBody.innerHTML = ''; 
         if (data.ordersList.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4">Nenhuma entrega concluída este mês.</td></tr>';
+            const periodText = data.period?.label || (safePeriod === 'day' ? 'hoje' : safePeriod === 'week' ? 'esta semana' : 'este mês');
+            tableBody.innerHTML = `<tr><td colspan="4">Nenhuma entrega concluída para ${periodText}.</td></tr>`;
             return;
         }
         

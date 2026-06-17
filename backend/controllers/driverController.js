@@ -10,6 +10,29 @@ const Order = require('../models/Order');
 const { DRIVER_STATUS, ORDER_STATUS, FINANCIAL, DRIVER_TYPES } = require('../utils/constants');
 const { parseCommissionRate } = require('../utils/helpers');
 
+
+const getPeriodRange = (periodRaw) => {
+  const key = ['day', 'week', 'month'].includes(String(periodRaw || '')) ? String(periodRaw) : 'month';
+  const start = new Date();
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+
+  if (key === 'day') {
+    start.setHours(0, 0, 0, 0);
+  } else if (key === 'week') {
+    const day = start.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    start.setDate(start.getDate() + mondayOffset);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  }
+
+  const label = key === 'day' ? 'Hoje' : key === 'week' ? 'Esta Semana' : 'Este Mês';
+  return { key, label, start, end };
+};
+
 exports.getAllDrivers = asyncHandler(async (_req, res) => {
   const drivers = await User.find({ role: 'driver' })
     .populate('profile')
@@ -185,11 +208,7 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
     throw new Error('Perfil de motorista não encontrado.');
   }
 
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  startOfMonth.setUTCHours(0, 0, 0, 0);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  endOfMonth.setUTCHours(23, 59, 59, 999);
+  const range = getPeriodRange(req.query?.period || 'month');
 
   if ((profile.driverType || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL) {
     return res.status(200).json({
@@ -199,14 +218,15 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
       commissionRate: 0,
       totalGanhos: 0,
       totalOrders: 0,
-      ordersList: []
+      ordersList: [],
+      period: { key: range.key, label: range.label, start: range.start, end: range.end }
     });
   }
 
   const orders = await Order.find({
     assigned_to_driver: profile._id,
     status: ORDER_STATUS.COMPLETED,
-    timestamp_completed: { $gte: startOfMonth, $lte: endOfMonth }
+    timestamp_completed: { $gte: range.start, $lte: range.end }
   })
     .sort({ timestamp_completed: -1 })
     .lean();
@@ -222,6 +242,7 @@ exports.getMyEarnings = asyncHandler(async (req, res) => {
     commissionRate: profile.commissionRate,
     totalGanhos,
     totalOrders: orders.length,
-    ordersList: orders
+    ordersList: orders,
+    period: { key: range.key, label: range.label, start: range.start, end: range.end }
   });
 });

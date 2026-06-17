@@ -18,6 +18,7 @@ const {
 const { getDistanceFromLatLonInKm, parseCommissionRate } = require('../utils/helpers');
 const { buildRouteQuote } = require('../utils/geoPricing');
 const { getSocketUserMap } = require('../socketHandler');
+const { createAdminNotification, shortOrderCode } = require('../utils/notifications');
 
 const MAX_IMAGE_BYTES = parseInt(process.env.UPLOAD_IMAGE_MAX_SIZE || `${5 * 1024 * 1024}`, 10);
 
@@ -40,6 +41,28 @@ const normalizeCoordinates = (lat, lng) => {
   }
 
   return { lat: parsedLat, lng: parsedLng };
+};
+
+const getPeriodRange = (periodRaw) => {
+  const key = ['day', 'week', 'month'].includes(String(periodRaw || '')) ? String(periodRaw) : 'month';
+  const start = new Date();
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+
+  if (key === 'day') {
+    start.setHours(0, 0, 0, 0);
+  } else if (key === 'week') {
+    const day = start.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    start.setDate(start.getDate() + mondayOffset);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  }
+
+  const label = key === 'day' ? 'Hoje' : key === 'week' ? 'Esta Semana' : 'Este Mês';
+  return { key, label, start, end };
 };
 
 const optimizeUpload = async (file) => {
@@ -237,6 +260,16 @@ exports.createOrder = asyncHandler(async (req, res) => {
     payment_status: normalizedPayment === PAYMENT_METHODS.POSTPAID_CREDIT
       ? PAYMENT_STATUS.POSTPAID_MONTHLY
       : PAYMENT_STATUS.UNPAID
+  });
+
+  await createAdminNotification({
+    dedupeKey: `new_order:${order._id}`,
+    type: 'order',
+    title: 'Novo pedido recebido',
+    message: `Pedido ${shortOrderCode(order._id)} · ${order.client_name || 'Cliente'} · ${paymentMethodLabel(order.payment_method)}.`,
+    order,
+    payload: { clientName: order.client_name, amount: Number(order.price || 0), paymentMethod: order.payment_method },
+    createdAt: order.createdAt || new Date()
   });
 
   // ===== SOCKET.IO =====
@@ -597,8 +630,19 @@ exports.previewDeliveryPayment = asyncHandler(async (req, res) => {
       clientName: order.client_name,
       driverId: driverProfile._id,
       amount: Number(order.price || 0),
-      paymentMethod: order.payment_method
+      paymentMethod: order.payment_method,
+      orderCode: shortOrderCode(order._id),
+      verificationCode: order.verification_code
     };
+    await createAdminNotification({
+      dedupeKey: `payment_pending:${order._id}`,
+      type: 'payment',
+      title: 'Pagamento por confirmar',
+      message: `Pedido ${shortOrderCode(order._id)} · Código ${order.verification_code || '—'} · confirmar ${Number(order.price || 0).toFixed(2)} MZN.`,
+      order,
+      payload,
+      createdAt: order.payment_confirmation_requested_at || new Date()
+    });
     io.to(ADMIN_ROOM).emit('payment_confirmation_pending', payload);
     io.to(String(driverProfile.user)).emit('payment_confirmation_pending', payload);
   }
@@ -697,8 +741,18 @@ const completeDelivery = asyncHandler(async (req, res) => {
   driverProfile.status = DRIVER_STATUS.ONLINE_FREE;
   await driverProfile.save();
 
+  await createAdminNotification({
+    dedupeKey: `delivery_completed:${order._id}`,
+    type: 'success',
+    title: 'Entrega finalizada',
+    message: `Pedido ${shortOrderCode(order._id)} · Código ${order.verification_code || '—'} · finalizado por ${req.user.nome || 'motorista'}.`,
+    order,
+    payload: { driverName: req.user.nome, amount: Number(order.price || 0), paymentMethod: order.payment_method },
+    createdAt: order.timestamp_completed || new Date()
+  });
+
   const io = req.app.get('socketio');
-  io.to(ADMIN_ROOM).emit('delivery_completed', { id: order._id });
+  io.to(ADMIN_ROOM).emit('delivery_completed', { id: order._id, orderCode: shortOrderCode(order._id), verificationCode: order.verification_code });
   io.to(ADMIN_ROOM).emit('driver_status_changed', {
     driverId: driverProfile._id,
     newStatus: driverProfile.status
@@ -783,9 +837,11 @@ exports.getActiveOrders = asyncHandler(async (_req, res) => {
   res.status(200).json({ orders });
 });
 
-exports.getHistoryOrders = asyncHandler(async (_req, res) => {
+exports.getHistoryOrders = asyncHandler(async (req, res) => {
+  const range = getPeriodRange(req.query?.period || 'month');
   const orders = await Order.find({
-    status: { $in: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELED] }
+    status: { $in: [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELED] },
+    timestamp_completed: { $gte: range.start, $lte: range.end }
   })
     .populate({
       path: 'assigned_to_driver',
@@ -794,7 +850,10 @@ exports.getHistoryOrders = asyncHandler(async (_req, res) => {
     .sort({ timestamp_completed: -1 })
     .lean();
 
-  res.status(200).json({ orders });
+  res.status(200).json({
+    orders,
+    period: { key: range.key, label: range.label, start: range.start, end: range.end }
+  });
 });
 
 exports.getOrderById = asyncHandler(async (req, res) => {

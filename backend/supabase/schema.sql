@@ -131,6 +131,23 @@ create table if not exists public.orders (
   updated_at timestamptz not null default now()
 );
 
+
+create table if not exists public.system_notifications (
+  id text primary key default public.trago_generate_id(),
+  scope text not null default 'admin' check (scope in ('admin')),
+  dedupe_key text not null unique,
+  type text not null default 'info' check (type in ('info', 'order', 'payment', 'success', 'warning', 'error')),
+  title text not null,
+  message text not null default '',
+  order_id text references public.orders(id) on delete set null,
+  order_code text,
+  verification_code text,
+  payload jsonb not null default '{}'::jsonb,
+  read_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.trips (
   id text primary key default public.trago_generate_id(),
   driver text not null references public.driver_profiles(id) on delete cascade,
@@ -178,6 +195,9 @@ create table if not exists public.company_costs (
 );
 
 create index if not exists idx_users_role_nome on public.users(role, nome);
+create index if not exists idx_system_notifications_scope_read_created on public.system_notifications(scope, read_at, created_at desc);
+create index if not exists idx_system_notifications_order on public.system_notifications(order_id);
+create index if not exists idx_system_notifications_dedupe on public.system_notifications(dedupe_key);
 create index if not exists idx_vehicles_plate on public.vehicles(plate);
 create index if not exists idx_driver_profiles_status on public.driver_profiles(status);
 create index if not exists idx_driver_profiles_vehicle on public.driver_profiles(vehicle_id);
@@ -215,6 +235,10 @@ drop trigger if exists trg_orders_updated_at on public.orders;
 create trigger trg_orders_updated_at before update on public.orders
 for each row execute function public.trago_touch_updated_at();
 
+drop trigger if exists trg_system_notifications_updated_at on public.system_notifications;
+create trigger trg_system_notifications_updated_at before update on public.system_notifications
+for each row execute function public.trago_touch_updated_at();
+
 drop trigger if exists trg_trips_updated_at on public.trips;
 create trigger trg_trips_updated_at before update on public.trips
 for each row execute function public.trago_touch_updated_at();
@@ -234,6 +258,7 @@ alter table public.vehicles enable row level security;
 alter table public.driver_profiles enable row level security;
 alter table public.clients enable row level security;
 alter table public.orders enable row level security;
+alter table public.system_notifications enable row level security;
 alter table public.trips enable row level security;
 alter table public.expenses enable row level security;
 alter table public.company_costs enable row level security;

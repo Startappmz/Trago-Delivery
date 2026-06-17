@@ -507,16 +507,19 @@ async function loadActiveDeliveries() {
 
 async function loadHistory() {
     const tableBody = document.getElementById('history-orders-table-body');
+    const periodSelect = document.getElementById('history-period-select');
+    const period = ['day', 'week', 'month'].includes(periodSelect?.value) ? periodSelect.value : 'month';
     tableBody.innerHTML = '<tr><td colspan="8">A carregar.</td></tr>';
     try {
-        const response = await fetch(`${API_URL}/api/orders/history`, { headers: getAuthHeaders('admin') });
+        const response = await fetch(`${API_URL}/api/orders/history?period=${encodeURIComponent(period)}`, { headers: getAuthHeaders('admin') });
         if (response.status === 401) { return handleLogout('admin'); }
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
 
         tableBody.innerHTML = '';
         if (!data.orders || data.orders.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="8">Nenhum histórico encontrado.</td></tr>';
+            const label = data.period?.label || (period === 'day' ? 'hoje' : period === 'week' ? 'esta semana' : 'este mês');
+            tableBody.innerHTML = `<tr><td colspan="8">Nenhum histórico encontrado para ${label}.</td></tr>`;
             return;
         }
 

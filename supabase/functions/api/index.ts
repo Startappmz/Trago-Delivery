@@ -210,6 +210,28 @@ const readBody = async (req: Request) => {
 
 const parseQuery = (req: Request) => Object.fromEntries(new URL(req.url).searchParams.entries());
 
+const getPeriodRange = (periodRaw: unknown) => {
+  const key = ['day', 'week', 'month'].includes(String(periodRaw || '')) ? String(periodRaw) : 'month';
+  const start = new Date();
+  const end = new Date();
+  end.setUTCHours(23, 59, 59, 999);
+
+  if (key === 'day') {
+    start.setUTCHours(0, 0, 0, 0);
+  } else if (key === 'week') {
+    const day = start.getUTCDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    start.setUTCDate(start.getUTCDate() + mondayOffset);
+    start.setUTCHours(0, 0, 0, 0);
+  } else {
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+  }
+
+  const label = key === 'day' ? 'Hoje' : key === 'week' ? 'Esta Semana' : 'Este Mês';
+  return { key, label, start, end };
+};
+
 const requireUser = async (req: Request, allowedRoles?: Role | Role[]) => {
   const token = readToken(req);
   if (!token) throw new HttpError(401, 'Não autorizado, token em falta');
@@ -402,6 +424,22 @@ const fromTrip = (row: AnyRecord) => row ? ({
   updatedAt: row.updated_at
 }) : null;
 
+const fromNotification = (row: AnyRecord) => row ? ({
+  _id: row.id,
+  id: row.id,
+  scope: row.scope || 'admin',
+  type: row.type || 'info',
+  title: row.title || 'Notificação',
+  message: row.message || '',
+  orderId: row.order_id || null,
+  orderCode: row.order_code || '',
+  verificationCode: row.verification_code || '',
+  payload: row.payload || {},
+  readAt: row.read_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+}) : null;
+
 const selectOne = async (table: string, column: string, value: unknown) => {
   const { data, error } = await supabase.from(table).select('*').eq(column, value).maybeSingle();
   if (error) throw new HttpError(500, error.message);
@@ -506,6 +544,91 @@ const broadcast = async (channelName: string, event: string, payload: AnyRecord)
 
 const broadcastAdmin = (event: string, payload: AnyRecord = {}) => broadcast(ADMIN_ROOM, event, payload);
 const broadcastDriver = (userId: string, event: string, payload: AnyRecord = {}) => broadcast(`driver:${userId}`, event, payload);
+
+const shortOrderCode = (orderId: unknown) => {
+  const raw = String(orderId || '').trim();
+  return raw ? `#${raw.slice(-6).toUpperCase()}` : '—';
+};
+
+const createAdminNotification = async ({
+  dedupeKey,
+  type = 'info',
+  title = 'Notificação',
+  message = '',
+  order = null,
+  orderId = null,
+  orderCode = '',
+  verificationCode = '',
+  payload = {},
+  createdAt = null
+}: AnyRecord) => {
+  try {
+    const effectiveOrderId = orderId || order?.id || null;
+    const record = {
+      id: generateId(),
+      scope: 'admin',
+      dedupe_key: String(dedupeKey || `${type}:${effectiveOrderId || Date.now()}`).slice(0, 180),
+      type: String(type || 'info').slice(0, 40),
+      title: String(title || 'Notificação').slice(0, 120),
+      message: String(message || '').slice(0, 500),
+      order_id: effectiveOrderId,
+      order_code: orderCode || shortOrderCode(effectiveOrderId),
+      verification_code: verificationCode || order?.verification_code || '',
+      payload: payload || {},
+      created_at: createdAt || nowIso()
+    };
+    const { error } = await supabase
+      .from('system_notifications')
+      .upsert(record, { onConflict: 'dedupe_key', ignoreDuplicates: true });
+    if (error) console.warn('[trago-edge] Notificação não persistida:', error.message);
+  } catch (error) {
+    console.warn('[trago-edge] Falha ao persistir notificação:', error);
+  }
+};
+
+const syncOperationalNotifications = async () => {
+  try {
+    const { data: pendingOrders } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('status', ORDER_STATUS.PENDING)
+      .order('created_at', { ascending: false })
+      .limit(25);
+
+    for (const order of pendingOrders || []) {
+      await createAdminNotification({
+        dedupeKey: `new_order:${order.id}`,
+        type: 'order',
+        title: 'Novo pedido recebido',
+        message: `Pedido ${shortOrderCode(order.id)} · ${order.client_name || 'Cliente'} aguarda atribuição.`,
+        order,
+        payload: { clientName: order.client_name, amount: Number(order.price || 0), paymentMethod: order.payment_method },
+        createdAt: order.created_at || nowIso()
+      });
+    }
+
+    const { data: paymentOrders } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('payment_status', PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION)
+      .order('payment_confirmation_requested_at', { ascending: false, nullsFirst: false })
+      .limit(50);
+
+    for (const order of paymentOrders || []) {
+      await createAdminNotification({
+        dedupeKey: `payment_pending:${order.id}`,
+        type: 'payment',
+        title: 'Pagamento por confirmar',
+        message: `Pedido ${shortOrderCode(order.id)} · Código ${order.verification_code || '—'} · confirmar ${Number(order.price || 0).toFixed(2)} MZN.`,
+        order,
+        payload: { clientName: order.client_name, amount: Number(order.price || 0), paymentMethod: order.payment_method },
+        createdAt: order.payment_confirmation_requested_at || order.updated_at || nowIso()
+      });
+    }
+  } catch (error) {
+    console.warn('[trago-edge] Falha ao sincronizar notificações operacionais:', error);
+  }
+};
 
 const buildLocationPayload = (profileRow: AnyRecord, userRow: AnyRecord) => {
   const loc = profileRow.last_location || {};
@@ -931,16 +1054,15 @@ const routeDrivers = async (req: Request, path: string, method: string) => {
     const user = await requireUser(req, 'driver');
     const profile = await getDriverProfileByUser(user.id);
     if (!profile) throw new HttpError(404, 'Perfil de motorista não encontrado.');
-    const start = new Date();
-    start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const query = parseQuery(req);
+    const range = getPeriodRange(query.period || 'month');
     const { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('assigned_to_driver', profile.id)
       .eq('status', ORDER_STATUS.COMPLETED)
-      .gte('timestamp_completed', start.toISOString())
-      .lte('timestamp_completed', end.toISOString())
+      .gte('timestamp_completed', range.start.toISOString())
+      .lte('timestamp_completed', range.end.toISOString())
       .order('timestamp_completed', { ascending: false });
     if (error) throw new HttpError(500, error.message);
     const orders = (data || []).map(fromOrder);
@@ -949,7 +1071,8 @@ const routeDrivers = async (req: Request, path: string, method: string) => {
       commissionRate: isOfficial ? 0 : Number(profile.commission_rate || 20),
       totalGanhos: isOfficial ? 0 : orders.reduce((sum: number, order: AnyRecord) => sum + Number(order.valor_motorista || 0), 0),
       totalOrders: orders.length,
-      ordersList: isOfficial ? [] : orders
+      ordersList: isOfficial ? [] : orders,
+      period: { key: range.key, label: range.label, start: range.start.toISOString(), end: range.end.toISOString() }
     });
   }
 
@@ -1287,6 +1410,16 @@ const routeOrders = async (req: Request, path: string, method: string) => {
       payment_status: paymentMethod === 'postpaid_credit' ? PAYMENT_STATUS.POSTPAID_MONTHLY : PAYMENT_STATUS.UNPAID
     });
 
+    await createAdminNotification({
+      dedupeKey: `new_order:${orderRow.id}`,
+      type: 'order',
+      title: 'Novo pedido recebido',
+      message: `Pedido ${shortOrderCode(orderRow.id)} · ${orderRow.client_name || 'Cliente'} · ${paymentMethodLabel(orderRow.payment_method)}.`,
+      order: orderRow,
+      payload: { clientName: orderRow.client_name, amount: Number(orderRow.price || 0), paymentMethod: orderRow.payment_method },
+      createdAt: orderRow.created_at || nowIso()
+    });
+
     const order = fromOrder(orderRow);
     if (bestProfile) {
       await broadcastDriver(bestProfile.user_id, 'nova_entrega_atribuida', {
@@ -1372,8 +1505,19 @@ const routeOrders = async (req: Request, path: string, method: string) => {
         clientName: updated.client_name,
         driverId: profile.id,
         amount: toNumber(updated.price, 0),
-        paymentMethod: updated.payment_method
+        paymentMethod: updated.payment_method,
+        orderCode: shortOrderCode(updated.id),
+        verificationCode: updated.verification_code
       };
+      await createAdminNotification({
+        dedupeKey: `payment_pending:${updated.id}`,
+        type: 'payment',
+        title: 'Pagamento por confirmar',
+        message: `Pedido ${shortOrderCode(updated.id)} · Código ${updated.verification_code || '—'} · confirmar ${Number(updated.price || 0).toFixed(2)} MZN.`,
+        order: updated,
+        payload,
+        createdAt: updated.payment_confirmation_requested_at || nowIso()
+      });
       await broadcastAdmin('payment_confirmation_pending', payload);
       await broadcastDriver(profile.user_id, 'payment_confirmation_pending', payload);
     }
@@ -1403,11 +1547,19 @@ const routeOrders = async (req: Request, path: string, method: string) => {
 
   if (path === '/api/orders/history' && method === 'GET') {
     await requireUser(req, 'admin');
-    const { data, error } = await supabase.from('orders').select('*').in('status', [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELED]).order('timestamp_completed', { ascending: false, nullsFirst: false });
+    const query = parseQuery(req);
+    const range = getPeriodRange(query.period || 'month');
+    let q = supabase
+      .from('orders')
+      .select('*')
+      .in('status', [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELED])
+      .gte('timestamp_completed', range.start.toISOString())
+      .lte('timestamp_completed', range.end.toISOString());
+    const { data, error } = await q.order('timestamp_completed', { ascending: false, nullsFirst: false });
     if (error) throw new HttpError(500, error.message);
     const orders = [];
     for (const row of data || []) orders.push(await enrichOrder(row));
-    return json({ orders });
+    return json({ orders, period: { key: range.key, label: range.label, start: range.start.toISOString(), end: range.end.toISOString() } });
   }
 
   if (path === '/api/orders' && method === 'GET') {
@@ -1577,9 +1729,69 @@ const handleOrderAction = async (req: Request, orderId: string, action: string, 
 
   const updatedOrder = await updateRow('orders', order.id, orderUpdate);
   const updatedProfile = await updateRow('driver_profiles', profile.id, { status: profileStatus });
-  await broadcastAdmin(event, { id: updatedOrder.id, driverName: user.nome });
+  if (event === 'delivery_completed') {
+    await createAdminNotification({
+      dedupeKey: `delivery_completed:${updatedOrder.id}`,
+      type: 'success',
+      title: 'Entrega finalizada',
+      message: `Pedido ${shortOrderCode(updatedOrder.id)} · Código ${updatedOrder.verification_code || '—'} · finalizado por ${user.nome || 'motorista'}.`,
+      order: updatedOrder,
+      payload: { driverName: user.nome, amount: Number(updatedOrder.price || 0), paymentMethod: updatedOrder.payment_method },
+      createdAt: updatedOrder.timestamp_completed || nowIso()
+    });
+  }
+  await broadcastAdmin(event, { id: updatedOrder.id, driverName: user.nome, orderCode: shortOrderCode(updatedOrder.id), verificationCode: updatedOrder.verification_code });
   await broadcastAdmin('driver_status_changed', { driverId: updatedProfile.id, driverUserId: user.id, newStatus: updatedProfile.status });
   return json({ message, order: fromOrder(updatedOrder) });
+};
+
+const routeNotifications = async (req: Request, path: string, method: string) => {
+  if (!path.startsWith('/api/notifications')) return null;
+  await requireUser(req, 'admin');
+
+  if (path === '/api/notifications' && method === 'GET') {
+    await syncOperationalNotifications();
+    const query = parseQuery(req);
+    const limit = Math.min(Math.max(Number(query.limit || 80), 1), 150);
+    let q = supabase
+      .from('system_notifications')
+      .select('*')
+      .eq('scope', 'admin')
+      .is('read_at', null)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    const { data, error } = await q;
+    if (error) throw new HttpError(500, error.message);
+    return json({ notifications: (data || []).map(fromNotification), totalUnread: (data || []).length });
+  }
+
+  if (path === '/api/notifications/mark-all-read' && method === 'POST') {
+    const { data, error } = await supabase
+      .from('system_notifications')
+      .update({ read_at: nowIso(), updated_at: nowIso() })
+      .eq('scope', 'admin')
+      .is('read_at', null)
+      .select('id');
+    if (error) throw new HttpError(500, error.message);
+    return json({ message: 'Notificações marcadas como lidas.', updatedCount: data?.length || 0 });
+  }
+
+  const readMatch = path.match(/^\/api\/notifications\/([a-f0-9]{24})\/read$/i);
+  if (readMatch && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    const { data, error } = await supabase
+      .from('system_notifications')
+      .update({ read_at: nowIso(), updated_at: nowIso() })
+      .eq('id', readMatch[1])
+      .eq('scope', 'admin')
+      .select('*')
+      .maybeSingle();
+    if (error) throw new HttpError(500, error.message);
+    if (!data) throw new HttpError(404, 'Notificação não encontrada.');
+    return json({ message: 'Notificação marcada como lida.', notification: fromNotification(data) });
+  }
+
+  return null;
 };
 
 const routeStats = async (req: Request, path: string, method: string) => {
@@ -1616,25 +1828,8 @@ const routeStats = async (req: Request, path: string, method: string) => {
 
   if (path === '/api/stats/financials') {
     const query = parseQuery(req);
-    const period = ['day', 'week', 'month'].includes(String(query.period || '')) ? String(query.period) : 'month';
-    const start = new Date();
-    const end = new Date();
-    end.setUTCHours(23, 59, 59, 999);
-
-    if (period === 'day') {
-      start.setUTCHours(0, 0, 0, 0);
-    } else if (period === 'week') {
-      const day = start.getUTCDay();
-      const mondayOffset = day === 0 ? -6 : 1 - day;
-      start.setUTCDate(start.getUTCDate() + mondayOffset);
-      start.setUTCHours(0, 0, 0, 0);
-    } else {
-      start.setUTCDate(1);
-      start.setUTCHours(0, 0, 0, 0);
-    }
-
-    const periodLabel = period === 'day' ? 'Hoje' : period === 'week' ? 'Esta Semana' : 'Este Mês';
-    const { data, error } = await supabase.from('orders').select('*').eq('status', ORDER_STATUS.COMPLETED).gte('timestamp_completed', start.toISOString()).lte('timestamp_completed', end.toISOString());
+    const range = getPeriodRange(query.period || 'month');
+    const { data, error } = await supabase.from('orders').select('*').eq('status', ORDER_STATUS.COMPLETED).gte('timestamp_completed', range.start.toISOString()).lte('timestamp_completed', range.end.toISOString());
     if (error) throw new HttpError(500, error.message);
     const rows = data || [];
     const totals = rows.reduce((acc: AnyRecord, row: AnyRecord) => {
@@ -1656,7 +1851,7 @@ const routeStats = async (req: Request, path: string, method: string) => {
       totalGanhosMotorista: totals.totalGanhosMotorista,
       totalLucroEmpresa: totals.totalLucroEmpresa,
       topDriver,
-      period: { key: period, label: periodLabel, start: start.toISOString(), end: end.toISOString() }
+      period: { key: range.key, label: range.label, start: range.start.toISOString(), end: range.end.toISOString() }
     });
   }
 
@@ -1855,7 +2050,7 @@ Deno.serve(async (req) => {
   try {
     if (path === '/health') return json({ status: 'ok', runtime: 'supabase-edge-functions', storageBucket: STORAGE_BUCKET });
 
-    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeVehicles, routeOrders, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
+    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeVehicles, routeOrders, routeNotifications, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
     for (const handler of handlers) {
       const response = await handler(req, path, method);
       if (response) return response;

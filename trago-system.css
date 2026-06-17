@@ -3428,3 +3428,61 @@ textarea,
         font-size: 0.7rem !important;
     }
 }
+
+/* Trago 2026 — filtros de histórico/extrato e códigos nas notificações */
+.history-toolbar,
+.driver-earnings-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.history-search-box {
+  flex: 1 1 320px;
+  margin-bottom: 0 !important;
+}
+.history-period-group,
+.driver-period-group {
+  flex: 0 1 220px;
+}
+.notification-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+.notification-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(141, 197, 67, 0.13);
+  color: #365314;
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+.notification-meta strong {
+  display: inline !important;
+  margin: 0 !important;
+  font-size: inherit !important;
+}
+@media (max-width: 768px) {
+  .history-toolbar,
+  .driver-earnings-header {
+    align-items: stretch;
+  }
+  .history-search-box,
+  .history-period-group,
+  .driver-period-group {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+  .notification-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
