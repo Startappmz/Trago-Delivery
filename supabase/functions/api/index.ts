@@ -45,6 +45,11 @@ const DRIVER_STATUS = Object.freeze({
   OFFLINE: 'offline'
 });
 
+const DRIVER_TYPES = Object.freeze({
+  FREELANCER: 'freelancer',
+  OFFICIAL: 'official'
+});
+
 const ORDER_STATUS = Object.freeze({
   PENDING: 'pendente',
   ASSIGNED: 'atribuido',
@@ -57,7 +62,19 @@ const ORDER_STATUS = Object.freeze({
 });
 
 const ADMIN_ROOM = 'admin_room';
-const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer']);
+const PAYMENT_STATUS = Object.freeze({
+  UNPAID: 'nao_pago',
+  AWAITING_DRIVER_CONFIRMATION: 'aguardando_confirmacao_pagamento',
+  PAID: 'pago',
+  POSTPAID_MONTHLY: 'pos_pago_mensal'
+});
+
+const CLIENT_BILLING_TYPES = Object.freeze({
+  PREPAID: 'prepaid',
+  POSTPAID: 'postpaid'
+});
+
+const ALLOWED_PAYMENT_METHODS = new Set(['cash', 'mpesa', 'emola', 'mkesh', 'bank_transfer', 'pos', 'postpaid_credit']);
 const ONLINE_DRIVER_STATUSES = [
   DRIVER_STATUS.ONLINE_FREE,
   DRIVER_STATUS.ONLINE_BUSY,
@@ -123,6 +140,18 @@ const nowIso = () => new Date().toISOString();
 const toNumber = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clean = (value: unknown) => typeof value === 'string' ? value.trim() : value;
 const lowerEmail = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const paymentMethodLabel = (method: unknown) => ({
+  cash: 'Dinheiro',
+  mpesa: 'M-Pesa',
+  emola: 'e-Mola',
+  mkesh: 'mKesh',
+  bank_transfer: 'Transferência bancária',
+  pos: 'POS',
+  postpaid_credit: 'Cliente Pós-pago / Crédito'
+})[String(method || '')] || String(method || '—');
+
+const requiresImmediatePayment = (order: AnyRecord) => String(order.payment_method || '') !== 'postpaid_credit';
 
 const makeJwtKey = async () => crypto.subtle.importKey(
   'raw',
@@ -237,6 +266,15 @@ const fromClient = (row: AnyRecord) => row ? ({
   empresa: row.empresa || '',
   nuit: row.nuit || '',
   endereco: row.endereco || '',
+  billing_type: row.billing_type || CLIENT_BILLING_TYPES.PREPAID,
+  credit_limit: Number(row.credit_limit || 0),
+  credit_balance: Number(row.credit_balance || 0),
+  credit_used: Number(row.credit_used || 0),
+  credit: {
+    limit: Number(row.credit_limit || 0),
+    balance: Number(row.credit_balance || 0),
+    used: Number(row.credit_used || 0)
+  },
   created_by_admin: row.created_by_admin,
   createdAt: row.created_at,
   updatedAt: row.updated_at
@@ -247,8 +285,11 @@ const fromProfile = (row: AnyRecord) => row ? ({
   id: row.id,
   user: row.user_id,
   vehicle_plate: row.vehicle_plate || '',
+  vehicle_id: row.vehicle_id || null,
+  driver_type: row.driver_type || DRIVER_TYPES.FREELANCER,
+  driverType: row.driver_type || DRIVER_TYPES.FREELANCER,
   status: row.status,
-  commissionRate: Number(row.commission_rate ?? 20),
+  commissionRate: String(row.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL ? 0 : Number(row.commission_rate ?? 20),
   lastLocation: row.last_location,
   createdAt: row.created_at,
   updatedAt: row.updated_at
@@ -266,6 +307,9 @@ const fromOrder = (row: AnyRecord) => row ? ({
   address_coords: row.address_coords,
   pickup_address_text: row.pickup_address_text,
   pickup_address_coords: row.pickup_address_coords,
+  pickup_contact_name: row.pickup_contact_name || '',
+  pickup_contact_phone: row.pickup_contact_phone || '',
+  pickup_notes: row.pickup_notes || '',
   service_price: Number(row.service_price || 0),
   delivery_fee: Number(row.delivery_fee || 0),
   route_distance_km: row.route_distance_km != null ? Number(row.route_distance_km) : null,
@@ -289,6 +333,11 @@ const fromOrder = (row: AnyRecord) => row ? ({
   valor_motorista: Number(row.valor_motorista || 0),
   valor_empresa: Number(row.valor_empresa || 0),
   payment_method: row.payment_method || 'cash',
+  payment_status: row.payment_status || PAYMENT_STATUS.UNPAID,
+  payment_confirmed_amount: row.payment_confirmed_amount != null ? Number(row.payment_confirmed_amount) : null,
+  payment_confirmation_requested_at: row.payment_confirmation_requested_at,
+  payment_confirmed_at: row.payment_confirmed_at,
+  driver_delivery_notes: row.driver_delivery_notes || '',
   createdAt: row.created_at,
   updatedAt: row.updated_at
 }) : null;
@@ -316,6 +365,21 @@ const fromCost = (row: AnyRecord) => row ? ({
   createdBy: row.created_by,
   assignedUser: row.assigned_user,
   assignedClient: row.assigned_client,
+  assignedVehicle: row.assigned_vehicle,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+}) : null;
+
+const fromVehicle = (row: AnyRecord) => row ? ({
+  _id: row.id,
+  id: row.id,
+  plate: row.plate || '',
+  brand: row.brand || '',
+  model: row.model || '',
+  type: row.type || 'mota',
+  status: row.status || 'ativo',
+  notes: row.notes || '',
+  created_by: row.created_by,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 }) : null;
@@ -410,6 +474,15 @@ const enrichOrder = async (row: AnyRecord) => {
     order.assigned_to_driver = await enrichProfile(profileRow, true);
   }
   return order;
+};
+
+const enrichCost = async (row: AnyRecord) => {
+  const cost = fromCost(row);
+  if (!cost) return null;
+  if (row.assigned_user) cost.assignedUser = fromUser(await selectOne('users', 'id', row.assigned_user));
+  if (row.assigned_client) cost.assignedClient = fromClient(await selectOne('clients', 'id', row.assigned_client));
+  if (row.assigned_vehicle) cost.assignedVehicle = fromVehicle(await selectOne('vehicles', 'id', row.assigned_vehicle));
+  return cost;
 };
 
 const broadcast = async (channelName: string, event: string, payload: AnyRecord) => {
@@ -729,10 +802,15 @@ const routeAuth = async (req: Request, path: string, method: string) => {
       role: 'driver'
     });
 
+    const driverType = String(body.driverType || body.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL
+      ? DRIVER_TYPES.OFFICIAL
+      : DRIVER_TYPES.FREELANCER;
     const profileRow = await insertRow('driver_profiles', {
       user_id: userRow.id,
       vehicle_plate: clean(body.vehicle_plate) || '',
-      commission_rate: toNumber(body.commissionRate, 20),
+      vehicle_id: isValidId(String(body.vehicleId || body.vehicle_id || '')) ? String(body.vehicleId || body.vehicle_id) : null,
+      driver_type: driverType,
+      commission_rate: driverType === DRIVER_TYPES.OFFICIAL ? 0 : toNumber(body.commissionRate, 20),
       status: DRIVER_STATUS.OFFLINE
     });
 
@@ -866,11 +944,12 @@ const routeDrivers = async (req: Request, path: string, method: string) => {
       .order('timestamp_completed', { ascending: false });
     if (error) throw new HttpError(500, error.message);
     const orders = (data || []).map(fromOrder);
+    const isOfficial = String(profile.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL;
     return json({
-      commissionRate: Number(profile.commission_rate || 20),
-      totalGanhos: orders.reduce((sum: number, order: AnyRecord) => sum + Number(order.valor_motorista || 0), 0),
+      commissionRate: isOfficial ? 0 : Number(profile.commission_rate || 20),
+      totalGanhos: isOfficial ? 0 : orders.reduce((sum: number, order: AnyRecord) => sum + Number(order.valor_motorista || 0), 0),
       totalOrders: orders.length,
-      ordersList: orders
+      ordersList: isOfficial ? [] : orders
     });
   }
 
@@ -910,17 +989,27 @@ const routeDrivers = async (req: Request, path: string, method: string) => {
     });
     let profile = await getDriverProfileByUser(row.id);
     if (profile) {
+      const driverType = String(body.driverType || body.driver_type || profile.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL
+        ? DRIVER_TYPES.OFFICIAL
+        : DRIVER_TYPES.FREELANCER;
       profile = await updateRow('driver_profiles', profile.id, {
         vehicle_plate: clean(body.vehicle_plate) || '',
+        vehicle_id: isValidId(String(body.vehicleId || body.vehicle_id || '')) ? String(body.vehicleId || body.vehicle_id) : null,
+        driver_type: driverType,
         status: clean(body.status) || profile.status,
-        commission_rate: toNumber(body.commissionRate, 20)
+        commission_rate: driverType === DRIVER_TYPES.OFFICIAL ? 0 : toNumber(body.commissionRate, 20)
       });
     } else {
+      const driverType = String(body.driverType || body.driver_type || DRIVER_TYPES.FREELANCER) === DRIVER_TYPES.OFFICIAL
+        ? DRIVER_TYPES.OFFICIAL
+        : DRIVER_TYPES.FREELANCER;
       profile = await insertRow('driver_profiles', {
         user_id: row.id,
         vehicle_plate: clean(body.vehicle_plate) || '',
+        vehicle_id: isValidId(String(body.vehicleId || body.vehicle_id || '')) ? String(body.vehicleId || body.vehicle_id) : null,
+        driver_type: driverType,
         status: clean(body.status) || DRIVER_STATUS.OFFLINE,
-        commission_rate: toNumber(body.commissionRate, 20)
+        commission_rate: driverType === DRIVER_TYPES.OFFICIAL ? 0 : toNumber(body.commissionRate, 20)
       });
     }
     await broadcastAdmin('driver_status_changed', { driverId: profile.id, driverUserId: row.id, newStatus: profile.status });
@@ -944,6 +1033,10 @@ const routeClients = async (req: Request, path: string, method: string) => {
     requiredFields(body, ['nome', 'telefone']);
     const exists = await selectOne('clients', 'telefone', clean(body.telefone));
     if (exists) throw new HttpError(400, 'Um cliente com este número de telefone já existe.');
+    const billingType = String(body.billing_type || CLIENT_BILLING_TYPES.PREPAID) === CLIENT_BILLING_TYPES.POSTPAID
+      ? CLIENT_BILLING_TYPES.POSTPAID
+      : CLIENT_BILLING_TYPES.PREPAID;
+    const creditLimit = billingType === CLIENT_BILLING_TYPES.POSTPAID ? Math.max(0, toNumber(body.credit_limit, 0)) : 0;
     const row = await insertRow('clients', {
       nome: clean(body.nome),
       telefone: clean(body.telefone),
@@ -951,6 +1044,10 @@ const routeClients = async (req: Request, path: string, method: string) => {
       empresa: clean(body.empresa) || '',
       nuit: clean(body.nuit) || '',
       endereco: clean(body.endereco) || '',
+      billing_type: billingType,
+      credit_limit: creditLimit,
+      credit_balance: creditLimit,
+      credit_used: 0,
       created_by_admin: user.id
     });
     return json({ message: 'Cliente criado com sucesso', client: fromClient(row) }, 201);
@@ -997,13 +1094,22 @@ const routeClients = async (req: Request, path: string, method: string) => {
       const phoneInUse = await selectOne('clients', 'telefone', clean(body.telefone));
       if (phoneInUse) throw new HttpError(400, 'Este novo número de telefone já está em uso.');
     }
+    const billingType = String(body.billing_type || client.billing_type || CLIENT_BILLING_TYPES.PREPAID) === CLIENT_BILLING_TYPES.POSTPAID
+      ? CLIENT_BILLING_TYPES.POSTPAID
+      : CLIENT_BILLING_TYPES.PREPAID;
+    const creditUsed = billingType === CLIENT_BILLING_TYPES.POSTPAID ? Math.max(0, toNumber(client.credit_used, 0)) : 0;
+    const creditLimit = billingType === CLIENT_BILLING_TYPES.POSTPAID ? Math.max(0, toNumber(body.credit_limit, client.credit_limit || 0)) : 0;
     const row = await updateRow('clients', idMatch[1], {
       nome: clean(body.nome),
       telefone: clean(body.telefone),
       email: clean(body.email) || '',
       empresa: clean(body.empresa) || '',
       nuit: clean(body.nuit) || '',
-      endereco: clean(body.endereco) || ''
+      endereco: clean(body.endereco) || '',
+      billing_type: billingType,
+      credit_limit: creditLimit,
+      credit_balance: billingType === CLIENT_BILLING_TYPES.POSTPAID ? Math.max(creditLimit - creditUsed, 0) : 0,
+      credit_used: creditUsed
     });
     return json({ message: 'Cliente atualizado com sucesso', client: fromClient(row) });
   }
@@ -1019,6 +1125,77 @@ const routeClients = async (req: Request, path: string, method: string) => {
   return null;
 };
 
+
+
+const routeVehicles = async (req: Request, path: string, method: string) => {
+  if (path === '/api/vehicles' && method === 'GET') {
+    await requireUser(req, 'admin');
+    const { data, error } = await supabase.from('vehicles').select('*').order('plate', { ascending: true });
+    if (error) throw new HttpError(500, error.message);
+    return json({ vehicles: (data || []).map(fromVehicle) });
+  }
+
+  if (path === '/api/vehicles' && method === 'POST') {
+    const user = await requireUser(req, 'admin');
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['plate']);
+    const normalizedPlate = String(body.plate || '').trim().toUpperCase();
+    const existing = await selectOne('vehicles', 'plate', normalizedPlate);
+    if (existing) throw new HttpError(400, 'Já existe um veículo com esta matrícula.');
+    const row = await insertRow('vehicles', {
+      plate: normalizedPlate,
+      brand: clean(body.brand) || '',
+      model: clean(body.model) || '',
+      type: ['mota', 'carro', 'carrinha', 'outro'].includes(String(body.type || '')) ? String(body.type) : 'mota',
+      status: ['ativo', 'manutencao', 'inativo'].includes(String(body.status || '')) ? String(body.status) : 'ativo',
+      notes: String(body.notes || '').trim().slice(0, 500),
+      created_by: user.id
+    });
+    return json({ message: 'Veículo registado com sucesso.', vehicle: fromVehicle(row) }, 201);
+  }
+
+  const vehicleMatch = path.match(/^\/api\/vehicles\/([a-f0-9]{24})$/i);
+  if (vehicleMatch && method === 'GET') {
+    await requireUser(req, 'admin');
+    const row = await selectOne('vehicles', 'id', vehicleMatch[1]);
+    if (!row) throw new HttpError(404, 'Veículo não encontrado.');
+    return json({ vehicle: fromVehicle(row) });
+  }
+
+  if (vehicleMatch && method === 'PUT') {
+    await requireUser(req, 'admin');
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['plate']);
+    const current = await selectOne('vehicles', 'id', vehicleMatch[1]);
+    if (!current) throw new HttpError(404, 'Veículo não encontrado.');
+    const normalizedPlate = String(body.plate || '').trim().toUpperCase();
+    if (normalizedPlate !== current.plate) {
+      const plateInUse = await selectOne('vehicles', 'plate', normalizedPlate);
+      if (plateInUse) throw new HttpError(400, 'Esta matrícula já está em uso.');
+    }
+    const row = await updateRow('vehicles', current.id, {
+      plate: normalizedPlate,
+      brand: clean(body.brand) || '',
+      model: clean(body.model) || '',
+      type: ['mota', 'carro', 'carrinha', 'outro'].includes(String(body.type || '')) ? String(body.type) : 'mota',
+      status: ['ativo', 'manutencao', 'inativo'].includes(String(body.status || '')) ? String(body.status) : 'ativo',
+      notes: String(body.notes || '').trim().slice(0, 500)
+    });
+    return json({ message: 'Veículo atualizado com sucesso.', vehicle: fromVehicle(row) });
+  }
+
+  if (vehicleMatch && method === 'DELETE') {
+    await requireUser(req, 'admin');
+    const current = await selectOne('vehicles', 'id', vehicleMatch[1]);
+    if (!current) throw new HttpError(404, 'Veículo não encontrado.');
+    const hasCosts = await countRows('company_costs', (q) => q.eq('assigned_vehicle', current.id));
+    if (hasCosts > 0) throw new HttpError(400, 'Não é possível apagar veículos com custos associados.');
+    await deleteRow('vehicles', current.id);
+    return json({ message: 'Veículo apagado com sucesso.' });
+  }
+
+  return null;
+};
 
 const routeGeo = async (req: Request, path: string, method: string) => {
   if (path === '/api/geo/quote' && method === 'POST') {
@@ -1064,7 +1241,23 @@ const routeOrders = async (req: Request, path: string, method: string) => {
     const autoAssign = String(get('autoAssign') || '').toLowerCase() === 'true';
     const bestProfile = autoAssign ? await findBestDriverProfile(coordinates) : null;
     const rawPayment = String(get('payment_method') || '').trim();
-    const paymentMethod = ALLOWED_PAYMENT_METHODS.has(rawPayment) ? rawPayment : 'cash';
+    let paymentMethod = ALLOWED_PAYMENT_METHODS.has(rawPayment) ? rawPayment : 'cash';
+    const linkedClientId = isValidId(String(get('clientId') || '')) ? String(get('clientId')) : null;
+    const linkedClient = linkedClientId ? await selectOne('clients', 'id', linkedClientId) : null;
+
+    if (linkedClient?.billing_type === CLIENT_BILLING_TYPES.POSTPAID) {
+      paymentMethod = 'postpaid_credit';
+      const availableCredit = toNumber(linkedClient.credit_balance, 0);
+      if (availableCredit < totalOrderPrice) {
+        throw new HttpError(400, `Crédito insuficiente para cliente pós-pago. Disponível: ${availableCredit.toFixed(2)} MZN.`);
+      }
+      await updateRow('clients', linkedClient.id, {
+        credit_balance: availableCredit - totalOrderPrice,
+        credit_used: toNumber(linkedClient.credit_used, 0) + totalOrderPrice
+      });
+    } else if (paymentMethod === 'postpaid_credit') {
+      paymentMethod = 'cash';
+    }
 
     const orderRow = await insertRow('orders', {
       service_type: clean(get('service_type')),
@@ -1081,13 +1274,17 @@ const routeOrders = async (req: Request, path: string, method: string) => {
       pickup_address_coords: pickupCoordinates,
       address_text: clean(get('address_text')) || '',
       address_coords: coordinates,
-      client: isValidId(String(get('clientId') || '')) ? String(get('clientId')) : null,
+      pickup_contact_name: clean(get('pickup_contact_name')) || '',
+      pickup_contact_phone: clean(get('pickup_contact_phone')) || '',
+      pickup_notes: clean(get('pickup_notes')) || '',
+      client: linkedClientId,
       image_url: imageUrl,
       verification_code: generateVerificationCode(),
       created_by_admin: user.id,
       assigned_to_driver: bestProfile?.id || null,
       status: bestProfile ? ORDER_STATUS.ASSIGNED : ORDER_STATUS.PENDING,
-      payment_method: paymentMethod
+      payment_method: paymentMethod,
+      payment_status: paymentMethod === 'postpaid_credit' ? PAYMENT_STATUS.POSTPAID_MONTHLY : PAYMENT_STATUS.UNPAID
     });
 
     const order = fromOrder(orderRow);
@@ -1118,6 +1315,80 @@ const routeOrders = async (req: Request, path: string, method: string) => {
       .order('created_at', { ascending: false });
     if (error) throw new HttpError(500, error.message);
     return json({ orders: (data || []).map(fromOrder) });
+  }
+
+  if (path === '/api/orders/payment-pending' && method === 'GET') {
+    const user = await requireUser(req, ['admin', 'driver']);
+    let q = supabase
+      .from('orders')
+      .select('*')
+      .eq('payment_status', PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION)
+      .order('payment_confirmation_requested_at', { ascending: false, nullsFirst: false });
+
+    if (user.role === 'driver') {
+      const profile = await getDriverProfileByUser(user.id);
+      if (!profile) throw new HttpError(404, 'Perfil de motorista não encontrado.');
+      q = q.eq('assigned_to_driver', profile.id);
+    }
+
+    const { data, error } = await q;
+    if (error) throw new HttpError(500, error.message);
+    return json({ total: (data || []).length, orders: (data || []).map(fromOrder) });
+  }
+
+  const paymentPreviewMatch = path.match(/^\/api\/orders\/([a-f0-9]{24})\/payment-preview$/i);
+  if (paymentPreviewMatch && method === 'POST') {
+    const user = await requireUser(req, 'driver');
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['verification_code']);
+
+    const profile = await getDriverProfileByUser(user.id);
+    if (!profile) throw new HttpError(404, 'Perfil de motorista não encontrado.');
+
+    const order = await selectOne('orders', 'id', paymentPreviewMatch[1]);
+    if (!order) throw new HttpError(404, 'Encomenda não encontrada.');
+    if (String(order.assigned_to_driver || '') !== String(profile.id)) throw new HttpError(403, 'Não autorizado para esta encomenda.');
+
+    if (String(order.verification_code || '').toUpperCase() !== String(body.verification_code || '').toUpperCase()) {
+      throw new HttpError(400, 'Código de verificação incorreto.');
+    }
+    if (order.status !== ORDER_STATUS.DELIVERY_IN_PROGRESS) {
+      throw new HttpError(400, 'Esta encomenda não está na fase de entrega para confirmação de pagamento.');
+    }
+
+    const requiresPayment = requiresImmediatePayment(order);
+    const updated = requiresPayment
+      ? await updateRow('orders', order.id, {
+        payment_status: PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION,
+        payment_confirmation_requested_at: nowIso()
+      })
+      : await updateRow('orders', order.id, {
+        payment_confirmation_requested_at: nowIso()
+      });
+
+    if (requiresPayment) {
+      const payload = {
+        id: updated.id,
+        clientName: updated.client_name,
+        driverId: profile.id,
+        amount: toNumber(updated.price, 0),
+        paymentMethod: updated.payment_method
+      };
+      await broadcastAdmin('payment_confirmation_pending', payload);
+      await broadcastDriver(profile.user_id, 'payment_confirmation_pending', payload);
+    }
+
+    return json({
+      orderId: updated.id,
+      totalToPay: toNumber(updated.price, 0),
+      paymentMethod: updated.payment_method,
+      paymentMethodLabel: paymentMethodLabel(updated.payment_method),
+      requiresImmediatePayment: requiresPayment,
+      paymentStatus: updated.payment_status,
+      message: requiresPayment
+        ? 'Código validado. Confirme o valor recebido para finalizar.'
+        : 'Código validado. Cliente pós-pago: sem cobrança no acto.'
+    });
   }
 
   if (path === '/api/orders/active' && method === 'GET') {
@@ -1255,8 +1526,36 @@ const handleOrderAction = async (req: Request, orderId: string, action: string, 
     const body = await readBody(req) as AnyRecord;
     requiredFields(body, ['verification_code']);
     if (String(order.verification_code).toUpperCase() !== String(body.verification_code).toUpperCase()) throw new HttpError(400, 'Código de verificação incorreto.');
-    const commission = toNumber(profile.commission_rate, 20);
+
     const totalPrice = toNumber(order.price, 0);
+    const requiresPayment = requiresImmediatePayment(order);
+    let paymentUpdate: AnyRecord;
+
+    if (requiresPayment) {
+      const confirmed = toNumber(body.payment_amount_confirmed, NaN);
+      if (Number.isNaN(confirmed)) throw new HttpError(400, 'Introduza o valor recebido para confirmar o pagamento.');
+      if (Math.round(confirmed * 100) !== Math.round(totalPrice * 100)) {
+        await updateRow('orders', order.id, {
+          payment_status: PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION,
+          payment_confirmation_requested_at: order.payment_confirmation_requested_at || now
+        });
+        throw new HttpError(400, `Valor divergente. O valor correto a confirmar é ${totalPrice.toFixed(2)} MZN.`);
+      }
+      paymentUpdate = {
+        payment_status: PAYMENT_STATUS.PAID,
+        payment_confirmed_amount: confirmed,
+        payment_confirmed_at: now
+      };
+    } else {
+      paymentUpdate = {
+        payment_status: PAYMENT_STATUS.POSTPAID_MONTHLY,
+        payment_confirmed_amount: 0,
+        payment_confirmed_at: now
+      };
+    }
+
+    const driverType = profile.driver_type || DRIVER_TYPES.FREELANCER;
+    const commission = driverType === DRIVER_TYPES.OFFICIAL ? 0 : toNumber(profile.commission_rate, 20);
     const driverValue = totalPrice * (commission / 100);
     orderUpdate = {
       status: ORDER_STATUS.COMPLETED,
@@ -1267,10 +1566,12 @@ const handleOrderAction = async (req: Request, orderId: string, action: string, 
       delivery_completed_at: now,
       timestamp_completed: now,
       valor_motorista: driverValue,
-      valor_empresa: totalPrice - driverValue
+      valor_empresa: totalPrice - driverValue,
+      driver_delivery_notes: String(body.driver_delivery_notes || '').trim().slice(0, 1000),
+      ...paymentUpdate
     };
     profileStatus = DRIVER_STATUS.ONLINE_FREE;
-    message = 'Entrega finalizada com sucesso!';
+    message = requiresPayment ? 'Entrega finalizada e pagamento confirmado!' : 'Entrega finalizada. Cliente pós-pago para fecho mensal.';
     event = 'delivery_completed';
   }
 
@@ -1299,7 +1600,7 @@ const routeStats = async (req: Request, path: string, method: string) => {
   }
 
   if (path === '/api/stats/services') {
-    const serviceNames: AnyRecord = { rapido: 'Delivery Rápido', doc: 'Doc.', farma: 'Farmácia', carga: 'Cargas', outros: 'Outros' };
+    const serviceNames: AnyRecord = { rapido: 'Delivery Rápido', doc: 'Doc.', farma: 'Farmácia', carga: 'Cargas', restaurante_comida: 'Comida de Restaurante', mercadoria_cp: 'Mercadoria C/P', refeicao_restaurante_p: 'Refeição Restaurante P', outros: 'Outros' };
     const { data, error } = await supabase.from('orders').select('service_type,price').eq('status', ORDER_STATUS.COMPLETED);
     if (error) throw new HttpError(500, error.message);
     const byService: AnyRecord = {};
@@ -1314,8 +1615,25 @@ const routeStats = async (req: Request, path: string, method: string) => {
   }
 
   if (path === '/api/stats/financials') {
-    const start = new Date(); start.setUTCDate(1); start.setUTCHours(0, 0, 0, 0);
-    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const query = parseQuery(req);
+    const period = ['day', 'week', 'month'].includes(String(query.period || '')) ? String(query.period) : 'month';
+    const start = new Date();
+    const end = new Date();
+    end.setUTCHours(23, 59, 59, 999);
+
+    if (period === 'day') {
+      start.setUTCHours(0, 0, 0, 0);
+    } else if (period === 'week') {
+      const day = start.getUTCDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      start.setUTCDate(start.getUTCDate() + mondayOffset);
+      start.setUTCHours(0, 0, 0, 0);
+    } else {
+      start.setUTCDate(1);
+      start.setUTCHours(0, 0, 0, 0);
+    }
+
+    const periodLabel = period === 'day' ? 'Hoje' : period === 'week' ? 'Esta Semana' : 'Este Mês';
     const { data, error } = await supabase.from('orders').select('*').eq('status', ORDER_STATUS.COMPLETED).gte('timestamp_completed', start.toISOString()).lte('timestamp_completed', end.toISOString());
     if (error) throw new HttpError(500, error.message);
     const rows = data || [];
@@ -1333,7 +1651,13 @@ const routeStats = async (req: Request, path: string, method: string) => {
       const user = profile ? await selectOne('users', 'id', profile.user_id) : null;
       topDriver = { nome: user?.nome || 'N/A', totalGanhos: Number(topValue || 0) };
     }
-    return json({ totalReceita: totals.totalReceita, totalGanhosMotorista: totals.totalGanhosMotorista, totalLucroEmpresa: totals.totalLucroEmpresa, topDriver });
+    return json({
+      totalReceita: totals.totalReceita,
+      totalGanhosMotorista: totals.totalGanhosMotorista,
+      totalLucroEmpresa: totals.totalLucroEmpresa,
+      topDriver,
+      period: { key: period, label: periodLabel, start: start.toISOString(), end: end.toISOString() }
+    });
   }
 
   return null;
@@ -1428,14 +1752,25 @@ const routeSimpleFinancials = async (req: Request, path: string, method: string)
     if (query.endDate) { const end = new Date(query.endDate); end.setUTCHours(23, 59, 59, 999); q = q.lte('date', end.toISOString()); }
     const { data, error } = await q.order('date', { ascending: false });
     if (error) throw new HttpError(500, error.message);
-    return json({ costs: (data || []).map(fromCost) });
+    const costs = [];
+    for (const row of data || []) costs.push(await enrichCost(row));
+    return json({ costs });
   }
   if (path === '/api/costs' && method === 'POST') {
     const user = await requireUser(req, 'admin');
     const body = await readBody(req) as AnyRecord;
     requiredFields(body, ['category', 'amount']);
-    const row = await insertRow('company_costs', { category: clean(body.category), description: clean(body.description) || '', amount: toNumber(body.amount), date: body.date ? new Date(body.date).toISOString() : nowIso(), created_by: user.id, assigned_user: isValidId(String(body.assignedUser || '')) ? String(body.assignedUser) : null, assigned_client: isValidId(String(body.assignedClient || '')) ? String(body.assignedClient) : null });
-    return json({ message: 'Custo criado com sucesso.', cost: fromCost(row) }, 201);
+    const row = await insertRow('company_costs', {
+      category: clean(body.category),
+      description: clean(body.description) || '',
+      amount: toNumber(body.amount),
+      date: body.date ? new Date(body.date).toISOString() : nowIso(),
+      created_by: user.id,
+      assigned_user: isValidId(String(body.assignedUserId || body.assignedUser || '')) ? String(body.assignedUserId || body.assignedUser) : null,
+      assigned_client: isValidId(String(body.assignedClientId || body.assignedClient || '')) ? String(body.assignedClientId || body.assignedClient) : null,
+      assigned_vehicle: isValidId(String(body.assignedVehicleId || body.assignedVehicle || '')) ? String(body.assignedVehicleId || body.assignedVehicle) : null
+    });
+    return json({ message: 'Custo criado com sucesso.', cost: await enrichCost(row) }, 201);
   }
 
   return null;
@@ -1520,7 +1855,7 @@ Deno.serve(async (req) => {
   try {
     if (path === '/health') return json({ status: 'ok', runtime: 'supabase-edge-functions', storageBucket: STORAGE_BUCKET });
 
-    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeOrders, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
+    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeVehicles, routeOrders, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
     for (const handler of handlers) {
       const response = await handler(req, path, method);
       if (response) return response;
