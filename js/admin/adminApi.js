@@ -1225,31 +1225,38 @@ async function handleGenerateStatement() {
 
 
 async function loadVehicles() {
-    const tableBody = document.getElementById('vehicles-table-body');
-    if (!tableBody) return;
-    tableBody.innerHTML = '<tr><td colspan="5">A carregar...</td></tr>';
+    const tableBodies = ['vehicles-table-body', 'vehicles-table-body-motoristas']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+    if (!tableBodies.length) return;
+    tableBodies.forEach((tableBody) => {
+        tableBody.innerHTML = '<tr><td colspan="5">A carregar...</td></tr>';
+    });
     try {
         const response = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
         if (response.status === 401) return handleLogout('admin');
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Erro ao carregar veículos.');
         const vehicles = data.vehicles || [];
-        if (!vehicles.length) {
-            tableBody.innerHTML = '<tr><td colspan="5">Nenhum veículo registado.</td></tr>';
-            return;
-        }
-        tableBody.innerHTML = vehicles.map(v => `
-            <tr>
-                <td>${v.plate || '—'}</td>
-                <td>${v.type || '—'}</td>
-                <td><span class="status status-${String(v.status || 'ativo').replace('_', '-')}">${v.status || 'ativo'}</span></td>
-                <td>${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
-                <td><button class="btn-action-small btn-danger" onclick="handleDeleteVehicle('${v._id}', '${(v.plate || '').replace(/'/g, '\&#039;')}')" title="Apagar"><i class="fas fa-trash"></i></button></td>
-            </tr>
-        `).join('');
+        const html = !vehicles.length
+            ? '<tr><td colspan="5">Nenhum veículo registado.</td></tr>'
+            : vehicles.map(v => `
+                <tr>
+                    <td>${v.plate || '—'}</td>
+                    <td>${v.type || '—'}</td>
+                    <td><span class="status status-${String(v.status || 'ativo').replace('_', '-')}">${v.status || 'ativo'}</span></td>
+                    <td>${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
+                    <td><button class="btn-action-small btn-danger" onclick="handleDeleteVehicle('${v._id}', '${(v.plate || '').replace(/'/g, '&#039;')}')" title="Apagar"><i class="fas fa-trash"></i></button></td>
+                </tr>
+            `).join('');
+        tableBodies.forEach((tableBody) => {
+            tableBody.innerHTML = html;
+        });
     } catch (error) {
         console.error('Falha ao carregar veículos:', error);
-        tableBody.innerHTML = '<tr><td colspan="5">Erro ao carregar veículos.</td></tr>';
+        tableBodies.forEach((tableBody) => {
+            tableBody.innerHTML = '<tr><td colspan="5">Erro ao carregar veículos.</td></tr>';
+        });
     }
 }
 
@@ -1281,14 +1288,20 @@ async function handleAddVehicle(e) {
     e.preventDefault();
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
+    const suffix = form.id === 'form-add-veiculo-motoristas' ? '-motoristas' : '';
+    const getVehicleField = (baseId) => document.getElementById(`${baseId}${suffix}`);
     const body = {
-        plate: document.getElementById('vehicle-plate').value,
-        type: document.getElementById('vehicle-type').value,
-        status: document.getElementById('vehicle-status').value,
-        brand: document.getElementById('vehicle-brand').value,
-        model: document.getElementById('vehicle-model').value,
-        notes: document.getElementById('vehicle-notes').value
+        plate: getVehicleField('vehicle-plate')?.value || '',
+        type: getVehicleField('vehicle-type')?.value || 'mota',
+        status: getVehicleField('vehicle-status')?.value || 'ativo',
+        brand: getVehicleField('vehicle-brand')?.value || '',
+        model: getVehicleField('vehicle-model')?.value || '',
+        notes: getVehicleField('vehicle-notes')?.value || ''
     };
+    if (!String(body.plate || '').trim()) {
+        showCustomAlert('Erro', 'A matrícula do veículo é obrigatória.', 'error');
+        return;
+    }
     submitButton.disabled = true;
     submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A guardar...';
     try {
@@ -1332,13 +1345,13 @@ async function handleDeleteVehicle(vehicleId, plate) {
 
 // Mapa de categorias de custos -> label amigável
 const COST_CATEGORY_LABELS = {
-    salarios: 'Salários',
-    renda: 'Renda',
     manutencao: 'Manutenção',
-    comunicacao: 'Comunicação',
-    marketing: 'Marketing',
     combustivel: 'Combustível',
-    veiculo: 'Veículo / Matrícula',
+    emprestimo: 'Empréstimo',
+    credito: 'Crédito',
+    taxa_trans_levant: 'Taxa Trans/Levant',
+    consumiveis: 'Consumíveis',
+    despesas_aplicativo: 'Despesas aplicativo',
     diversos: 'Diversos'
 };
 

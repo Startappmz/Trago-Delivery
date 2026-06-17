@@ -84,12 +84,17 @@ function closeConfirmationModal() {
 /* --- Funções de Toggle de Formulários --- */
 // ... (showAddDriverForm, showAddClientForm - sem alterações) ...
 function showAddDriverForm(show) {
+    if (show && typeof showPage === 'function') {
+        showPage('cargos', 'nav-cargos', 'Cargos');
+        if (typeof loadVehiclesIntoSelects === 'function') loadVehiclesIntoSelects();
+    }
     const form = document.getElementById('form-add-motorista');
     const button = document.getElementById('btn-show-driver-form');
     if (!form || !button) return;
     if (show) { 
         form.classList.remove('hidden'); 
-        button.classList.add('hidden'); 
+        button.classList.add('hidden');
+        setTimeout(() => form.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     } else { 
         form.classList.add('hidden'); 
         button.classList.remove('hidden'); 
@@ -97,12 +102,16 @@ function showAddDriverForm(show) {
     }
 }
 function showAddClientForm(show) {
+    if (show && typeof showPage === 'function') {
+        showPage('cargos', 'nav-cargos', 'Cargos');
+    }
     const form = document.getElementById('form-add-cliente');
     const button = document.getElementById('btn-show-client-form');
     if (!form || !button) return;
     if (show) { 
         form.classList.remove('hidden'); 
-        button.classList.add('hidden'); 
+        button.classList.add('hidden');
+        setTimeout(() => form.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     } else { 
         form.classList.add('hidden'); 
         button.classList.remove('hidden'); 

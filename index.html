@@ -166,17 +166,24 @@
                 </div>
             </div>
             <div class="navbar-right">
-                <button class="nav-btn" id="theme-toggle" title="Alternar Tema">
-                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/>
-                        <path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/>
-                        <path d="M2 12h2"/><path d="M20 12h2"/>
-                        <path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>
-                    </svg>
-                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                    </svg>
-                </button>
+                <div class="notifications-shell">
+                    <button class="nav-btn notification-toggle" id="notifications-toggle" title="Notificações do sistema" aria-label="Notificações do sistema" aria-expanded="false">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge hidden" id="notifications-count">0</span>
+                    </button>
+                    <div class="notifications-panel hidden" id="notifications-panel" role="dialog" aria-label="Notificações do sistema">
+                        <div class="notifications-header">
+                            <div>
+                                <strong>Notificações</strong>
+                                <small>Controlo operacional da Trago</small>
+                            </div>
+                            <button type="button" class="btn-link-small" id="mark-all-notifications-read">Marcar todas como lidas</button>
+                        </div>
+                        <div class="notifications-list" id="notifications-list">
+                            <div class="notification-empty">Sem notificações por ler.</div>
+                        </div>
+                    </div>
+                </div>
                 <div class="admin-profile">
                     <span>Olá, <strong id="admin-name-header">Admin</strong></span>
                     <i class="fas fa-user-circle"></i>
@@ -471,6 +478,69 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="glass-card table-card section-spaced">
+                    <div class="card-header">
+                        <div>
+                            <h2 class="card-title">Veículos Registados</h2>
+                            <p class="card-subtitle">Controlo de matrículas, estado operacional e associação à frota</p>
+                        </div>
+                    </div>
+                    <form id="form-add-veiculo-motoristas" class="nested-form-card inline-vehicle-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="vehicle-plate-motoristas">Matrícula</label>
+                                <input type="text" id="vehicle-plate-motoristas" class="form-input" required placeholder="Ex: MXX-123-MP">
+                            </div>
+                            <div class="form-group">
+                                <label for="vehicle-type-motoristas">Tipo</label>
+                                <select id="vehicle-type-motoristas" class="form-input">
+                                    <option value="mota">Mota</option>
+                                    <option value="carro">Carro</option>
+                                    <option value="carrinha">Carrinha</option>
+                                    <option value="outro">Outro</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="vehicle-status-motoristas">Estado</label>
+                                <select id="vehicle-status-motoristas" class="form-input">
+                                    <option value="ativo">Activo</option>
+                                    <option value="manutencao">Manutenção</option>
+                                    <option value="inativo">Inactivo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="vehicle-brand-motoristas">Marca</label>
+                                <input type="text" id="vehicle-brand-motoristas" class="form-input" placeholder="Ex: Honda">
+                            </div>
+                            <div class="form-group">
+                                <label for="vehicle-model-motoristas">Modelo</label>
+                                <input type="text" id="vehicle-model-motoristas" class="form-input" placeholder="Ex: CB125">
+                            </div>
+                            <div class="form-group">
+                                <label for="vehicle-notes-motoristas">Notas</label>
+                                <input type="text" id="vehicle-notes-motoristas" class="form-input" placeholder="Seguro, combustível, manutenção...">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Adicionar Veículo</button>
+                    </form>
+                    <div class="table-wrapper scroll-compact section-spaced">
+                        <table class="data-table table-pedidos">
+                            <thead>
+                                <tr>
+                                    <th>Matrícula</th>
+                                    <th>Tipo</th>
+                                    <th>Estado</th>
+                                    <th>Marca/Modelo</th>
+                                    <th>Acções</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vehicles-table-body-motoristas"><tr><td colspan="5">A carregar...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- GESTÃO DE CLIENTES -->
@@ -542,13 +612,13 @@
                                     <label for="cost-category">Categoria</label>
                                     <select id="cost-category" class="form-input" required>
                                         <option value="">-- Selecione --</option>
-                                        <option value="salarios">Salários</option>
-                                        <option value="renda">Renda</option>
                                         <option value="manutencao">Manutenção</option>
-                                        <option value="comunicacao">Comunicação</option>
-                                        <option value="marketing">Marketing</option>
                                         <option value="combustivel">Combustível</option>
-                                        <option value="veiculo">Veículo / Matrícula</option>
+                                        <option value="emprestimo">Empréstimo</option>
+                                        <option value="credito">Crédito</option>
+                                        <option value="taxa_trans_levant">Taxa Trans/Levant</option>
+                                        <option value="consumiveis">Consumíveis</option>
+                                        <option value="despesas_aplicativo">Despesas aplicativo</option>
                                         <option value="diversos">Diversos</option>
                                     </select>
                                 </div>
@@ -575,7 +645,7 @@
             
                             <div class="form-group">
                                 <label for="cost-description">Descrição</label>
-                                <input type="text" id="cost-description" class="form-input" placeholder="Ex: Salário Novembro, renda escritório, campanha marketing.">
+                                <input type="text" id="cost-description" class="form-input" placeholder="Ex: combustível, manutenção, taxa de transferência, consumíveis.">
                             </div>
             
                             <button type="submit" class="btn btn-primary">

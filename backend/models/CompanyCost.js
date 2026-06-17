@@ -1,13 +1,13 @@
 const { createModel } = require('../lib/supabaseModel');
 
 const COMPANY_COST_CATEGORIES = [
-  'salarios',
-  'renda',
   'manutencao',
-  'comunicacao',
-  'marketing',
   'combustivel',
-  'veiculo',
+  'emprestimo',
+  'credito',
+  'taxa_trans_levant',
+  'consumiveis',
+  'despesas_aplicativo',
   'diversos'
 ];
 

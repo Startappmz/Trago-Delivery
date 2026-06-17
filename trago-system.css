@@ -3330,3 +3330,101 @@ textarea,
   .financial-section-header { align-items: stretch; }
   .compact-select-group { max-width: none; width: 100%; }
 }
+
+/* ------------------------------------------------------------------
+   Trago 2026 — Correção mobile do painel de notificações
+   Mantém o pop-up dentro do viewport em ecrãs pequenos.
+------------------------------------------------------------------ */
+@media (max-width: 768px) {
+    .notifications-shell {
+        position: static !important;
+    }
+
+    .notifications-panel {
+        position: fixed !important;
+        top: calc(62px + env(safe-area-inset-top, 0px)) !important;
+        left: max(10px, env(safe-area-inset-left, 0px)) !important;
+        right: max(10px, env(safe-area-inset-right, 0px)) !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        max-height: calc(100dvh - 82px - env(safe-area-inset-bottom, 0px)) !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        border-radius: 16px !important;
+        z-index: 2200 !important;
+    }
+
+    .notifications-header {
+        align-items: center !important;
+        gap: 10px !important;
+        padding: 12px !important;
+    }
+
+    .notifications-header > div {
+        min-width: 0 !important;
+    }
+
+    .notifications-header strong,
+    .notifications-header small {
+        overflow-wrap: anywhere !important;
+    }
+
+    .notifications-header .btn-link-small {
+        flex: 0 0 auto !important;
+        max-width: 132px !important;
+        white-space: normal !important;
+        text-align: right !important;
+        line-height: 1.15 !important;
+    }
+
+    .notifications-list {
+        max-height: calc(100dvh - 154px - env(safe-area-inset-bottom, 0px)) !important;
+        padding: 8px !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .notification-item {
+        grid-template-columns: 32px minmax(0, 1fr) !important;
+        gap: 9px !important;
+        padding: 10px !important;
+    }
+
+    .notification-icon {
+        width: 32px !important;
+        height: 32px !important;
+    }
+
+    .notification-content {
+        min-width: 0 !important;
+    }
+
+    .notification-content strong,
+    .notification-content p,
+    .notification-content small {
+        overflow-wrap: anywhere !important;
+        word-break: normal !important;
+    }
+
+    .notification-read-btn {
+        grid-column: 2 / -1 !important;
+        justify-self: start !important;
+        margin-top: 2px !important;
+        white-space: normal !important;
+    }
+}
+
+@media (max-width: 380px) {
+    .notifications-panel {
+        top: calc(60px + env(safe-area-inset-top, 0px)) !important;
+        left: 8px !important;
+        right: 8px !important;
+        border-radius: 14px !important;
+    }
+
+    .notifications-header .btn-link-small {
+        max-width: 112px !important;
+        font-size: 0.7rem !important;
+    }
+}

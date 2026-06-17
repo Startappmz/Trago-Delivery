@@ -20,6 +20,7 @@ let driverMarkers = {}; // Objeto para guardar os marcadores por ID de motorista
 let liveMapRefreshTimer = null;
 let freeIcon = null;
 let busyIcon = null;
+let offlineIcon = null;
 
 const BUSY_DRIVER_STATUSES = new Set(['online_ocupado', 'em_recolha', 'em_entrega']);
 
@@ -47,21 +48,18 @@ function getDriverStatusLabel(status = '') {
  * Esta função é chamada uma vez quando a página de admin é carregada.
  */
 function initializeMapIcons() {
-    const iconShadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png';
-
-    // Ícone para motorista livre
-    freeIcon = L.icon({
-        iconUrl: 'https://i.postimg.cc/MK8ty3PJ/car-pin-point.png',
-        shadowUrl: iconShadowUrl,
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+    const makeDotIcon = (statusClass) => L.divIcon({
+        className: `driver-dot-marker ${statusClass}`,
+        html: '<span></span>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -10]
     });
 
-    // Ícone para motorista ocupado / em recolha / em entrega
-    busyIcon = L.icon({
-        iconUrl: 'https://i.postimg.cc/J0bJ0fJj/marker-busy.png',
-        shadowUrl: iconShadowUrl,
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-    });
+    // Pontos discretos no mapa em vez de imagens de veículos.
+    freeIcon = makeDotIcon('driver-dot-green');
+    busyIcon = makeDotIcon('driver-dot-orange');
+    offlineIcon = makeDotIcon('driver-dot-red');
 }
 
 /**
@@ -248,7 +246,7 @@ function updateDriverMarker(data) {
         : '';
 
     const popupContent = `<strong>${driverName}</strong><br>Status: ${statusLabel}${updatedAtLabel}`;
-    const iconToUse = BUSY_DRIVER_STATUSES.has(status) ? busyIcon : freeIcon;
+    const iconToUse = status === 'offline' ? offlineIcon : (BUSY_DRIVER_STATUSES.has(status) ? busyIcon : freeIcon);
 
     if (driverMarkers[driverId]) {
         // Se o marcador já existe, atualiza a posição, ícone e popup
@@ -292,8 +290,10 @@ function removeDriverMarker(data) {
     if (!liveMap || !driverId) return;
 
     if (driverMarkers[driverId]) {
-        liveMap.removeLayer(driverMarkers[driverId]); // Remove do mapa
-        delete driverMarkers[driverId]; // Remove do nosso registo
-        console.log(`Removido marcador para ${data.driverName || 'motorista'} (desconectado)`);
+        const marker = driverMarkers[driverId];
+        marker.setIcon(offlineIcon || busyIcon || freeIcon);
+        const currentPopup = marker.getPopup()?.getContent?.() || `<strong>${data.driverName || 'Motorista'}</strong>`;
+        marker.setPopupContent(`${currentPopup}<br><small>Estado: offline</small>`);
+        console.log(`Motorista ${data.driverName || 'motorista'} marcado como offline no mapa.`);
     }
 }

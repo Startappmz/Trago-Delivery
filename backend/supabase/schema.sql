@@ -150,7 +150,7 @@ create table if not exists public.trips (
 
 create table if not exists public.expenses (
   id text primary key default public.trago_generate_id(),
-  category text not null check (category in ('salarios', 'renda', 'diversos', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo')),
+  category text not null check (category in ('manutencao', 'combustivel', 'emprestimo', 'credito', 'taxa_trans_levant', 'consumiveis', 'despesas_aplicativo', 'diversos')),
   description text not null,
   amount numeric(12,2) not null default 0 check (amount >= 0),
   date timestamptz not null,
@@ -162,7 +162,7 @@ create table if not exists public.expenses (
 
 create table if not exists public.company_costs (
   id text primary key default public.trago_generate_id(),
-  category text not null check (category in ('salarios', 'renda', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo', 'diversos')),
+  category text not null check (category in ('manutencao', 'combustivel', 'emprestimo', 'credito', 'taxa_trans_levant', 'consumiveis', 'despesas_aplicativo', 'diversos')),
   description text default '',
   amount numeric(12,2) not null default 0 check (amount >= 0),
   date timestamptz not null default now(),

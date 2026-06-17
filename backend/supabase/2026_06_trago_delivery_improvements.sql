@@ -64,11 +64,11 @@ alter table public.orders drop constraint if exists orders_payment_status_check;
 alter table public.orders add constraint orders_payment_status_check check (payment_status in ('nao_pago', 'aguardando_confirmacao_pagamento', 'pago', 'pos_pago_mensal'));
 
 alter table public.expenses drop constraint if exists expenses_category_check;
-alter table public.expenses add constraint expenses_category_check check (category in ('salarios', 'renda', 'diversos', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo'));
+alter table public.expenses add constraint expenses_category_check check (category in ('manutencao', 'combustivel', 'emprestimo', 'credito', 'taxa_trans_levant', 'consumiveis', 'despesas_aplicativo', 'diversos'));
 
 alter table public.company_costs add column if not exists assigned_vehicle text references public.vehicles(id) on delete set null;
 alter table public.company_costs drop constraint if exists company_costs_category_check;
-alter table public.company_costs add constraint company_costs_category_check check (category in ('salarios', 'renda', 'manutencao', 'comunicacao', 'marketing', 'combustivel', 'veiculo', 'diversos'));
+alter table public.company_costs add constraint company_costs_category_check check (category in ('manutencao', 'combustivel', 'emprestimo', 'credito', 'taxa_trans_levant', 'consumiveis', 'despesas_aplicativo', 'diversos'));
 alter table public.company_costs drop constraint if exists company_cost_single_assignment;
 alter table public.company_costs add constraint company_cost_single_assignment check (
   ((assigned_user is not null)::int + (assigned_client is not null)::int + (assigned_vehicle is not null)::int) <= 1

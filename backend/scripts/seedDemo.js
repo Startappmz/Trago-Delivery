@@ -83,7 +83,7 @@ async function run() {
 
   await CompanyCost.insertMany([
     { category: 'combustivel', amount: 800, description: 'Combustível semanal', date: now, createdBy: admin._id, assignedUser: driverUsers[0]._id },
-    { category: 'marketing', amount: 1500, description: 'Campanha digital', date: now, createdBy: admin._id },
+    { category: 'despesas_aplicativo', amount: 1500, description: 'Campanha digital', date: now, createdBy: admin._id },
     { category: 'manutencao', amount: 600, description: 'Manutenção de mota', date: now, createdBy: admin._id, assignedUser: driverUsers[1]._id }
   ]);
 

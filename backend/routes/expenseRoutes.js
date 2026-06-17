@@ -12,13 +12,14 @@ router.post(
   adminOrManager,
   [
     body('category', 'Categoria inválida').isIn([
-      'salarios',
-      'renda',
-      'diversos',
       'manutencao',
-      'comunicacao',
-      'marketing',
-      'combustivel'
+      'combustivel',
+      'emprestimo',
+      'credito',
+      'taxa_trans_levant',
+      'consumiveis',
+      'despesas_aplicativo',
+      'diversos'
     ]),
     body('description', 'Descrição é obrigatória').trim().notEmpty(),
     body('amount', 'Valor deve ser um número positivo').isFloat({ min: 0 }),
@@ -37,13 +38,14 @@ router.get(
     query('startDate').optional().isISO8601(),
     query('endDate').optional().isISO8601(),
     query('category').optional().isIn([
-      'salarios',
-      'renda',
-      'diversos',
       'manutencao',
-      'comunicacao',
-      'marketing',
-      'combustivel'
+      'combustivel',
+      'emprestimo',
+      'credito',
+      'taxa_trans_levant',
+      'consumiveis',
+      'despesas_aplicativo',
+      'diversos'
     ])
   ],
   validateRequest,
@@ -59,13 +61,14 @@ router.put(
   [
     param('id', 'ID inválido').isMongoId(),
     body('category', 'Categoria inválida').isIn([
-      'salarios',
-      'renda',
-      'diversos',
       'manutencao',
-      'comunicacao',
-      'marketing',
-      'combustivel'
+      'combustivel',
+      'emprestimo',
+      'credito',
+      'taxa_trans_levant',
+      'consumiveis',
+      'despesas_aplicativo',
+      'diversos'
     ]),
     body('description', 'Descrição é obrigatória').trim().notEmpty(),
     body('amount', 'Valor deve ser um número positivo').isFloat({ min: 0 }),

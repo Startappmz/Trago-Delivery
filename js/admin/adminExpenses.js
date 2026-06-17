@@ -188,11 +188,12 @@ async function exportFinancialReport() {
 }
 
 const EXPENSE_CATEGORIES = {
-  salarios: 'Salários',
-  renda: 'Renda',
-  diversos: 'Diversos',
   manutencao: 'Manutenção',
-  comunicacao: 'Comunicação',
-  marketing: 'Marketing',
-  combustivel: 'Combustível'
+  combustivel: 'Combustível',
+  emprestimo: 'Empréstimo',
+  credito: 'Crédito',
+  taxa_trans_levant: 'Taxa Trans/Levant',
+  consumiveis: 'Consumíveis',
+  despesas_aplicativo: 'Despesas aplicativo',
+  diversos: 'Diversos'
 };

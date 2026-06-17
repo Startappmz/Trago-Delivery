@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeMapIcons(); // (Vem do adminMap.js)
     connectSocket(); 
     attachEventListeners();
+    initAdminNotificationCenter();
     installResponsiveTableObserver();
 
     loadAdminProfile(); // 👈 ESTA LINHA
@@ -155,10 +156,10 @@ function attachEventListeners() {
         financialPeriodSelect.addEventListener('change', () => loadFinancialStats(financialPeriodSelect.value));
     }
 
-    const vehicleForm = document.getElementById('form-add-veiculo');
-    if (vehicleForm) {
+    const vehicleForms = [document.getElementById('form-add-veiculo'), document.getElementById('form-add-veiculo-motoristas')].filter(Boolean);
+    vehicleForms.forEach((vehicleForm) => {
         vehicleForm.addEventListener('submit', handleAddVehicle);
-    }
+    });
 
     const driverTypeSelect = document.getElementById('driver-type');
     if (driverTypeSelect) {
@@ -260,6 +261,8 @@ function showPage(pageId, navId, title) {
             break;
         case 'gestao-motoristas':
             loadDrivers();
+            loadVehicles();
+            loadVehiclesIntoSelects();
             break;
         case 'entregas-activas':
             loadActiveDeliveries();
@@ -343,6 +346,16 @@ function connectSocket() {
     function handleRealtimeEvent(event, data = {}) {
         switch (event) {
             case 'order_pending':
+                addAdminNotification({
+                    id: `order_pending_${data.orderId || data.id || Date.now()}`,
+                    type: 'order',
+                    title: 'Novo pedido recebido',
+                    message: data.clientName ? `Pedido de ${data.clientName} aguardando atribuição.` : 'Há um novo pedido aguardando controlo operacional.',
+                    createdAt: new Date().toISOString()
+                });
+                refreshOperationalViews();
+                break;
+
             case 'orders_changed':
             case 'pickup_started':
             case 'pickup_completed':
@@ -351,6 +364,13 @@ function connectSocket() {
                 break;
 
             case 'payment_confirmation_pending':
+                addAdminNotification({
+                    id: `payment_pending_${data.id || data.orderId || Date.now()}`,
+                    type: 'payment',
+                    title: 'Pagamento por confirmar',
+                    message: data.amount ? `Entrega aguardando confirmação de pagamento: ${Number(data.amount).toFixed(2)} MZN.` : 'Uma entrega aguarda confirmação de pagamento/finalização.',
+                    createdAt: new Date().toISOString()
+                });
                 checkAdminPaymentPendingAlerts(true);
                 refreshOperationalViews();
                 break;
@@ -360,6 +380,13 @@ function connectSocket() {
                 break;
 
             case 'delivery_completed':
+                addAdminNotification({
+                    id: `delivery_completed_${data.orderId || data.id || Date.now()}`,
+                    type: 'success',
+                    title: 'Entrega finalizada',
+                    message: 'Uma entrega foi finalizada e enviada para o histórico.',
+                    createdAt: new Date().toISOString()
+                });
                 refreshOperationalViews({ includeHistory: true, includeFinancials: true });
                 break;
 
@@ -498,6 +525,178 @@ async function checkAdminPaymentPendingAlerts(force = false) {
 }
 setInterval(() => checkAdminPaymentPendingAlerts(false), 120000);
 
+
+const ADMIN_NOTIFICATIONS_STORAGE_KEY = 'trago_admin_notifications_v1';
+const ADMIN_NOTIFICATIONS_READ_STORAGE_KEY = 'trago_admin_notifications_read_v1';
+let adminNotifications = [];
+let readAdminNotificationIds = new Set();
+let adminNotificationsPanelOpen = false;
+
+function initAdminNotificationCenter() {
+    loadStoredAdminNotifications();
+    renderAdminNotifications();
+
+    const toggle = document.getElementById('notifications-toggle');
+    const panel = document.getElementById('notifications-panel');
+    const markAllBtn = document.getElementById('mark-all-notifications-read');
+
+    if (toggle && panel) {
+        toggle.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            adminNotificationsPanelOpen = !adminNotificationsPanelOpen;
+            panel.classList.toggle('hidden', !adminNotificationsPanelOpen);
+            toggle.setAttribute('aria-expanded', adminNotificationsPanelOpen ? 'true' : 'false');
+        });
+    }
+
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            markAllAdminNotificationsAsRead();
+        });
+    }
+
+    document.addEventListener('click', (event) => {
+        if (!adminNotificationsPanelOpen) return;
+        const shell = document.querySelector('.notifications-shell');
+        if (shell && shell.contains(event.target)) return;
+        adminNotificationsPanelOpen = false;
+        panel?.classList.add('hidden');
+        toggle?.setAttribute('aria-expanded', 'false');
+    });
+
+    refreshAdminNotificationSources();
+    setInterval(refreshAdminNotificationSources, 60000);
+}
+
+function loadStoredAdminNotifications() {
+    try {
+        const raw = localStorage.getItem(ADMIN_NOTIFICATIONS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        adminNotifications = Array.isArray(parsed) ? parsed.filter((item) => !item.read) : [];
+        const readRaw = localStorage.getItem(ADMIN_NOTIFICATIONS_READ_STORAGE_KEY);
+        const readParsed = readRaw ? JSON.parse(readRaw) : [];
+        readAdminNotificationIds = new Set(Array.isArray(readParsed) ? readParsed : []);
+    } catch (_) {
+        adminNotifications = [];
+        readAdminNotificationIds = new Set();
+    }
+}
+
+function persistAdminNotifications() {
+    const cleanList = adminNotifications
+        .filter((item) => !item.read)
+        .slice(0, 80);
+    localStorage.setItem(ADMIN_NOTIFICATIONS_STORAGE_KEY, JSON.stringify(cleanList));
+    localStorage.setItem(ADMIN_NOTIFICATIONS_READ_STORAGE_KEY, JSON.stringify(Array.from(readAdminNotificationIds).slice(-200)));
+}
+
+function addAdminNotification(notification) {
+    if (!notification || !notification.id) return;
+    if (readAdminNotificationIds.has(notification.id)) return;
+    const exists = adminNotifications.some((item) => item.id === notification.id && !item.read);
+    if (exists) return;
+    adminNotifications.unshift({
+        id: notification.id,
+        type: notification.type || 'info',
+        title: notification.title || 'Notificação',
+        message: notification.message || '',
+        createdAt: notification.createdAt || new Date().toISOString(),
+        read: false
+    });
+    persistAdminNotifications();
+    renderAdminNotifications();
+}
+
+function markAdminNotificationAsRead(id) {
+    readAdminNotificationIds.add(id);
+    adminNotifications = adminNotifications.map((item) => item.id === id ? { ...item, read: true } : item).filter((item) => !item.read);
+    persistAdminNotifications();
+    renderAdminNotifications();
+}
+
+function markAllAdminNotificationsAsRead() {
+    adminNotifications.forEach((item) => readAdminNotificationIds.add(item.id));
+    adminNotifications = [];
+    persistAdminNotifications();
+    renderAdminNotifications();
+}
+
+function renderAdminNotifications() {
+    const list = document.getElementById('notifications-list');
+    const badge = document.getElementById('notifications-count');
+    if (!list || !badge) return;
+
+    const unread = adminNotifications.filter((item) => !item.read);
+    badge.textContent = String(unread.length);
+    badge.classList.toggle('hidden', unread.length === 0);
+
+    if (!unread.length) {
+        list.innerHTML = '<div class="notification-empty">Sem notificações por ler.</div>';
+        return;
+    }
+
+    list.innerHTML = unread.map((item) => {
+        const date = new Date(item.createdAt);
+        const time = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('pt-MZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const icon = item.type === 'payment' ? 'fa-money-check-alt' : item.type === 'order' ? 'fa-box' : item.type === 'success' ? 'fa-check-circle' : 'fa-bell';
+        return `
+            <div class="notification-item notification-${item.type}">
+                <div class="notification-icon"><i class="fas ${icon}"></i></div>
+                <div class="notification-content">
+                    <strong>${item.title}</strong>
+                    <p>${item.message}</p>
+                    <small>${time}</small>
+                </div>
+                <button type="button" class="btn-link-small notification-read-btn" onclick="markAdminNotificationAsRead('${String(item.id).replace(/[^a-zA-Z0-9_:-]/g, '')}')">Marcar como lida</button>
+            </div>
+        `;
+    }).join('');
+}
+
+async function refreshAdminNotificationSources() {
+    const token = getAuthToken('admin');
+    if (!token) return;
+
+    try {
+        const [activeResp, paymentResp] = await Promise.all([
+            fetch(`${API_URL}/api/orders/active`, { headers: getAuthHeaders('admin') }),
+            fetch(`${API_URL}/api/orders/payment-pending`, { headers: getAuthHeaders('admin') })
+        ]);
+
+        if (activeResp.ok) {
+            const activeData = await activeResp.json();
+            (activeData.orders || []).forEach((order) => {
+                if (order.status === 'pendente') {
+                    addAdminNotification({
+                        id: `order_pending_${order._id || order.id}`,
+                        type: 'order',
+                        title: 'Pedido pendente',
+                        message: `#${String(order._id || order.id).slice(-6)} · ${order.client_name || 'Cliente'} aguarda atribuição.`,
+                        createdAt: order.createdAt || order.created_at || new Date().toISOString()
+                    });
+                }
+            });
+        }
+
+        if (paymentResp.ok) {
+            const paymentData = await paymentResp.json();
+            (paymentData.orders || []).forEach((order) => {
+                addAdminNotification({
+                    id: `payment_pending_${order._id || order.id}`,
+                    type: 'payment',
+                    title: 'Pagamento pendente',
+                    message: `#${String(order._id || order.id).slice(-6)} · confirmar ${Number(order.price || 0).toFixed(2)} MZN recebido pelo motorista.`,
+                    createdAt: order.payment_confirmation_requested_at || order.updatedAt || order.updated_at || new Date().toISOString()
+                });
+            });
+        }
+    } catch (error) {
+        console.warn('Falha ao atualizar notificações:', error.message || error);
+    }
+}
+
 /**
  * Carrega o perfil do administrador logado.
  */
@@ -519,6 +718,10 @@ async function loadAdminProfile() {
         const adminNameEl = document.getElementById('admin-name');
         if (adminNameEl) {
             adminNameEl.textContent = data.nome;
+        }
+        const adminNameHeaderEl = document.getElementById('admin-name-header');
+        if (adminNameHeaderEl) {
+            adminNameHeaderEl.textContent = data.nome;
         }
 
     } catch (error) {
