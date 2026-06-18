@@ -54,6 +54,12 @@ function emitDriverPosition(position) {
     }));
 }
 
+function emitDriverLocationState(state, title, text, timestamp = null) {
+    document.dispatchEvent(new CustomEvent('driver_location_state_changed', {
+        detail: { state, title, text, timestamp }
+    }));
+}
+
 function updateLocationNote(html, color = 'var(--danger)') {
     const note = document.getElementById('location-permission-note');
     if (!note) return;
@@ -76,6 +82,7 @@ function showLocationPermissionModal() {
     modal.classList.remove('hidden');
     const note = document.getElementById('location-permission-note');
     if (note) note.style.display = 'none';
+    emitDriverLocationState('waiting', 'GPS por activar', 'Toque em permitir para ficar disponível para entregas.');
 
     const closeBtn = document.getElementById('close-location-modal');
     if (closeBtn) closeBtn.style.display = 'none';
@@ -152,6 +159,7 @@ function requestLocationPermission() {
                 locationPermissionDenied = true;
                 markDriverOffline({ keepalive: false });
                 updateLocationNote('<i class="fas fa-ban"></i> A localização está bloqueada. Abra as permissões do navegador para este site e active “Localização”.');
+                emitDriverLocationState('error', 'GPS bloqueado', 'Abra as permissões da aplicação e active Localização.');
                 if (typeof showCustomAlert === 'function') {
                     showCustomAlert('Localização bloqueada', 'Active a localização nas permissões do navegador e clique em “Reativar Partilha de Localização”.', 'error', 8000);
                 }
@@ -209,6 +217,9 @@ function handleLocationError(error, isRequired = false) {
     if (isRequired && error?.code !== error.PERMISSION_DENIED && locationRetryCount < MAX_RETRIES) {
         setTimeout(() => requestLocationPermission(), 3000);
     }
+
+    const statusState = error?.code === error.PERMISSION_DENIED ? 'error' : 'warning';
+    emitDriverLocationState(statusState, statusState === 'error' ? 'GPS bloqueado' : 'GPS instável', errorMessage);
 
     if (typeof showCustomAlert === 'function') {
         showCustomAlert('Localização', errorMessage, 'error', 6500);
@@ -286,6 +297,7 @@ function startLocationTracking() {
     hideLocationModal();
     locationPermissionDenied = false;
     locationRetryCount = 0;
+    emitDriverLocationState('warning', 'GPS a localizar', 'A obter a primeira posição do motorista.');
 
     locationWatchId = navigator.geolocation.watchPosition(
         async (position) => {
@@ -334,6 +346,7 @@ async function markDriverOffline(options = {}) {
     offlineInProgress = true;
     driverOnlineConfirmed = false;
     stopHeartbeat();
+    emitDriverLocationState('warning', 'Motorista offline', 'GPS parado ou sessão encerrada.');
 
     try {
         await window.TragoRealtime?.setDriverOffline?.(token, { keepalive: Boolean(options.keepalive) });

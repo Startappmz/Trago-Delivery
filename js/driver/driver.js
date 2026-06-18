@@ -97,6 +97,17 @@ function attachDriverEventListeners() {
     document.getElementById('btn-close-payment-confirmation')?.addEventListener('click', closePaymentConfirmationModal);
     document.getElementById('btn-cancel-payment-confirmation')?.addEventListener('click', closePaymentConfirmationModal);
     document.getElementById('btn-confirm-payment-finalize')?.addEventListener('click', submitPaymentConfirmation);
+    const paymentAmountInput = document.getElementById('payment-confirmed-amount');
+    if (paymentAmountInput) {
+        paymentAmountInput.addEventListener('input', () => {
+            paymentAmountInput.dataset.userTyped = 'true';
+        });
+        paymentAmountInput.addEventListener('paste', (event) => {
+            event.preventDefault();
+            paymentAmountInput.dataset.userTyped = 'false';
+            showCustomAlert('Atenção', 'O valor recebido deve ser digitado manualmente pelo motorista.', 'warning');
+        });
+    }
 
     const earningsPeriodSelect = document.getElementById('driver-earnings-period-select');
     const completedPeriodSelect = document.getElementById('driver-completed-period-select');
@@ -115,44 +126,141 @@ function attachDriverEventListeners() {
 
     // Listener do formulário de senha
     document.getElementById('form-change-password-driver')?.addEventListener('submit', handleChangePasswordDriver);
+
+    // App shell mobile: navegação inferior, refresh e estado de GPS
+    document.getElementById('driver-brand-home')?.addEventListener('click', () => showDriverPage('lista-entregas'));
+    document.querySelectorAll('[data-driver-nav]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const target = button.dataset.driverNav;
+            if (target) showDriverPage(target);
+        });
+    });
+    document.querySelectorAll('[data-driver-action="logout"]').forEach((button) => {
+        button.addEventListener('click', () => handleLogout('driver'));
+    });
+
+    const refreshDeliveries = () => {
+        document.querySelectorAll('#driver-refresh-deliveries, #driver-refresh-deliveries-inline').forEach((button) => {
+            button.classList.add('is-loading');
+            setTimeout(() => button.classList.remove('is-loading'), 900);
+        });
+        loadMyDeliveries();
+    };
+    document.getElementById('driver-refresh-deliveries')?.addEventListener('click', refreshDeliveries);
+    document.getElementById('driver-refresh-deliveries-inline')?.addEventListener('click', refreshDeliveries);
+
+    document.querySelectorAll('[data-driver-period]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const period = button.dataset.driverPeriod || 'month';
+            const earningsPeriodSelect = document.getElementById('driver-earnings-period-select');
+            const completedPeriodSelect = document.getElementById('driver-completed-period-select');
+            if (earningsPeriodSelect) earningsPeriodSelect.value = period;
+            if (completedPeriodSelect) completedPeriodSelect.value = period;
+            updateDriverPeriodChips(period);
+            loadMyEarnings(period);
+        });
+    });
+
+    document.addEventListener('driver_location_updated', (event) => {
+        updateDriverLocationStatus('active', 'GPS activo', 'Localização em tempo real.', event.detail?.timestamp);
+    });
+    document.addEventListener('driver_location_state_changed', (event) => {
+        const detail = event.detail || {};
+        updateDriverLocationStatus(detail.state, detail.title, detail.text, detail.timestamp);
+    });
 }
 
 
 /* --- Lógica de Navegação do Motorista --- */
 
 function showDriverPage(pageId) {
+    const safePageId = pageId || 'lista-entregas';
+
     // Esconde todas as secções
     document.getElementById('lista-entregas')?.classList.add('hidden');
     document.getElementById('detalhe-entrega')?.classList.add('hidden');
     document.getElementById('configuracoes-motorista')?.classList.add('hidden');
-    document.getElementById('meus-ganhos')?.classList.add('hidden'); 
+    document.getElementById('meus-ganhos')?.classList.add('hidden');
 
     // Mostra a secção pedida
-    const pageToShow = document.getElementById(pageId);
+    const pageToShow = document.getElementById(safePageId);
     if (pageToShow) {
         pageToShow.classList.remove('hidden');
     }
 
+    updateDriverActiveNav(safePageId);
+    document.body.dataset.driverPage = safePageId;
+
     // Carrega os dados necessários para a página
-    if (pageId === 'lista-entregas') {
+    if (safePageId === 'lista-entregas') {
         loadMyDeliveries();
     }
-    if (pageId === 'configuracoes-motorista') {
+    if (safePageId === 'configuracoes-motorista') {
         document.getElementById('form-change-password-driver')?.reset();
     }
-    if (pageId === 'meus-ganhos') {
+    if (safePageId === 'meus-ganhos') {
         const period = document.getElementById('driver-completed-period-select')?.value
             || document.getElementById('driver-earnings-period-select')?.value
             || 'month';
-        loadMyEarnings(period); 
+        loadMyEarnings(period);
     }
-    if (pageId === 'detalhe-entrega') {
+    if (safePageId === 'detalhe-entrega') {
         requestAnimationFrame(() => window.TragoDriverMap?.invalidate?.());
         setTimeout(() => window.TragoDriverMap?.invalidate?.(), 180);
         setTimeout(() => window.TragoDriverMap?.invalidate?.(), 520);
     }
+
+    if (window.matchMedia('(max-width: 900px)').matches) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 }
 
+function updateDriverActiveNav(pageId) {
+    const navPage = pageId === 'detalhe-entrega' ? 'lista-entregas' : pageId;
+    document.querySelectorAll('[data-driver-nav]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.driverNav === navPage);
+    });
+}
+
+function updateDriverPeriodChips(period = 'month') {
+    const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
+    document.querySelectorAll('[data-driver-period]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.driverPeriod === safePeriod);
+    });
+}
+
+function updateDriverLocationStatus(state = 'waiting', title = 'GPS a iniciar', text = 'A aguardar localização.', timestamp = null) {
+    const header = document.getElementById('driver-header-status');
+    const headerText = document.getElementById('driver-header-status-text');
+    const card = document.getElementById('driver-status-card');
+    const titleEl = document.getElementById('driver-gps-status-title');
+    const textEl = document.getElementById('driver-gps-status-text');
+    const timeEl = document.getElementById('driver-last-location-time');
+    const settingsCopy = document.getElementById('settings-location-copy');
+
+    [header, card].forEach((el) => {
+        if (!el) return;
+        el.classList.remove('status-active', 'status-warning', 'status-error', 'status-waiting');
+        el.classList.add(`status-${state}`);
+    });
+
+    if (headerText) headerText.textContent = title;
+    if (titleEl) titleEl.textContent = title;
+    if (textEl) textEl.textContent = text;
+    if (settingsCopy) settingsCopy.textContent = state === 'active' ? 'GPS activo.' : 'Obrigatória para entregas.';
+
+    if (timeEl) {
+        if (timestamp) {
+            const date = new Date(timestamp);
+            const time = Number.isNaN(date.getTime()) ? 'agora' : date.toLocaleTimeString('pt-MZ', { hour: '2-digit', minute: '2-digit' });
+            timeEl.textContent = `Actualizado: ${time}`;
+        } else {
+            timeEl.textContent = 'Actualizado: —';
+        }
+    }
+}
+
+window.updateDriverLocationStatus = updateDriverLocationStatus;
 
 /* --- Lógica de API (GET) --- */
 
@@ -160,7 +268,7 @@ async function loadMyDeliveries() {
     const entregasContainer = document.getElementById('entregas-container');
     if (!entregasContainer) return;
 
-    entregasContainer.innerHTML = '<div class="loading-state">A carregar entregas...</div>';
+    entregasContainer.innerHTML = '<div class="loading-state driver-loading-card"><i class="fas fa-spinner fa-spin"></i><strong>A carregar...</strong><span>A verificar pedidos.</span></div>';
     try {
         const response = await fetch(`${API_URL}/api/orders/my-deliveries`, {
             method: 'GET',
@@ -168,49 +276,90 @@ async function loadMyDeliveries() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
+
+        const orders = Array.isArray(data.orders) ? data.orders : [];
         entregasContainer.innerHTML = '';
-        if (data.orders.length === 0) {
-            entregasContainer.innerHTML = '<div class="empty-state">Nenhuma entrega pendente.</div>';
+
+        const subtitle = document.getElementById('driver-home-subtitle');
+        if (subtitle) {
+            subtitle.textContent = orders.length
+                ? `${orders.length} entrega${orders.length > 1 ? 's' : ''}.`
+                : 'Livre para entregas.';
+        }
+
+        if (orders.length === 0) {
+            entregasContainer.innerHTML = `
+                <div class="empty-state driver-empty-state">
+                    <span class="driver-empty-icon"><i class="fas fa-motorcycle"></i></span>
+                    <strong>Sem entregas</strong>
+                    <p>A nova entrega aparece aqui.</p>
+                    <button type="button" class="driver-empty-refresh" onclick="loadMyDeliveries()">
+                        <i class="fas fa-sync-alt"></i> Actualizar
+                    </button>
+                </div>
+            `;
             return;
         }
-        data.orders.forEach(order => {
-            const card = document.createElement('div');
-            card.className = 'entrega-card';
+
+        orders.forEach(order => {
+            const card = document.createElement('article');
+            card.className = 'entrega-card driver-delivery-card';
             card.dataset.order = JSON.stringify(order);
-            const paymentMap = {
-                cash: 'Dinheiro',
-                mpesa: 'M-Pesa',
-                emola: 'e-Mola',
-                mkesh: 'mKesh',
-                bank_transfer: 'Transferência bancária',
-                pos: 'POS',
-                postpaid_credit: 'Cliente Pós-pago / Crédito'
-            };
+
+            const orderId = String(order._id || order.id || '');
+            const pickup = compactPlaceName(order.pickup_address_text || order.pickup_address || '', 'Recolha');
+            const delivery = compactPlaceName(order.address_text || order.delivery_address || '', 'Entrega');
+            const service = SERVICE_NAMES[order.service_type] || order.service_type || 'Serviço';
+            const paymentLabel = getDriverPaymentLabel(order.payment_method);
+            const statusLabel = getDriverStatusLabel(order.status);
+            const price = Number(order.price || order.total_price || 0);
+            const priceHtml = Number.isFinite(price) && price > 0 ? `<strong>${formatDriverMZN(price)}</strong>` : '<strong>—</strong>';
+            const ctaLabel = ['atribuido', 'pendente'].includes(order.status) ? 'Detalhes' : 'Continuar';
+
             card.innerHTML = `
-                <div class="entrega-card-header">
-                    <strong>Pedido #${order._id.slice(-6)}</strong>
-                    <span><i class="fas fa-map-marker-alt"></i> ${order.address_text ? order.address_text.split(',')[0] || 'Entrega' : 'Entrega'}</span>
+                <div class="driver-delivery-top">
+                    <span class="driver-delivery-id">#${escapeHtml(orderId.slice(-6) || 'pedido')}</span>
+                    <span class="driver-delivery-status status-${escapeHtml(order.status || 'pendente')}">${escapeHtml(statusLabel)}</span>
                 </div>
-                <p><strong>Cliente:</strong> ${order.client_name}</p>
-                <p><strong>Serviço:</strong> ${SERVICE_NAMES[order.service_type] || order.service_type}</p>
-                <p><strong>Pagamento:</strong> ${paymentMap[order.payment_method] || order.payment_method || '—'}</p>
-                <span class="ver-detalhes-btn">${order.status === 'atribuido' ? 'Ver Detalhes' : 'Continuar Entrega'}</span>
+                <div class="driver-delivery-route">
+                    <span><i class="fas fa-box-open"></i> ${escapeHtml(pickup)}</span>
+                    <i class="fas fa-arrow-down route-arrow"></i>
+                    <span><i class="fas fa-flag-checkered"></i> ${escapeHtml(delivery)}</span>
+                </div>
+                <div class="driver-delivery-meta">
+                    <span><i class="fas fa-user"></i> ${escapeHtml(order.client_name || 'Cliente')}</span>
+                    <span><i class="fas fa-briefcase"></i> ${escapeHtml(service)}</span>
+                    <span><i class="fas fa-credit-card"></i> ${escapeHtml(paymentLabel)}</span>
+                </div>
+                <div class="driver-delivery-footer">
+                    <div class="driver-delivery-price">
+                        <small>Valor</small>
+                        ${priceHtml}
+                    </div>
+                    <span class="ver-detalhes-btn">${ctaLabel} <i class="fas fa-chevron-right"></i></span>
+                </div>
             `;
-            card.addEventListener('click', () => { 
+            card.addEventListener('click', () => {
                 showDriverPage('detalhe-entrega');
-                fillDetalheEntrega(order); 
+                fillDetalheEntrega(order);
             });
             entregasContainer.appendChild(card);
         });
-    } catch (error) { 
-        console.error('Falha ao carregar entregas:', error); 
-        entregasContainer.innerHTML = '<div class="error-state">Erro ao carregar entregas.</div>';
+    } catch (error) {
+        console.error('Falha ao carregar entregas:', error);
+        entregasContainer.innerHTML = `
+            <div class="error-state driver-error-state">
+                <i class="fas fa-wifi"></i>
+                <strong>Erro ao carregar</strong>
+                <p>Verifique a internet e tente novamente.</p>
+                <button type="button" class="driver-empty-refresh" onclick="loadMyDeliveries()">Tentar</button>
+            </div>
+        `;
     }
-
 }
 
+
 async function loadMyEarnings(period = 'month') {
-    const formatMZN = (value) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(value);
     const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
 
     const totalGanhosEl = document.getElementById('driver-total-ganhos');
@@ -219,13 +368,15 @@ async function loadMyEarnings(period = 'month') {
     const tableBody = document.getElementById('driver-earnings-table-body');
     const titleEl = document.getElementById('driver-earnings-title');
     const tableTitleEl = document.getElementById('driver-earnings-table-title');
-    
+    const captionEl = document.getElementById('driver-earnings-summary-caption');
+
     if (!totalGanhosEl || !totalOrdersEl || !commissionEl || !tableBody) return;
 
     const topPeriodSelect = document.getElementById('driver-earnings-period-select');
     const tablePeriodSelect = document.getElementById('driver-completed-period-select');
     if (topPeriodSelect) topPeriodSelect.value = safePeriod;
     if (tablePeriodSelect) tablePeriodSelect.value = safePeriod;
+    updateDriverPeriodChips(safePeriod);
 
     totalGanhosEl.innerText = '...';
     totalOrdersEl.innerText = '...';
@@ -241,12 +392,13 @@ async function loadMyEarnings(period = 'month') {
         if (response.status === 401) {
             return handleLogout('driver');
         }
-        
+
         const data = await response.json();
         if (!response.ok) throw new Error(data.message);
         const periodLabel = data.period?.label || (safePeriod === 'day' ? 'Hoje' : safePeriod === 'week' ? 'Esta Semana' : 'Este Mês');
-        if (titleEl) titleEl.innerHTML = `<i class="fas fa-file-invoice-dollar"></i> Meus Ganhos — ${periodLabel}`;
-        if (tableTitleEl) tableTitleEl.textContent = `Extrato de Entregas Concluídas — ${periodLabel}`;
+        if (titleEl) titleEl.innerHTML = `<i class="fas fa-wallet"></i> Ganhos — ${escapeHtml(periodLabel)}`;
+        if (tableTitleEl) tableTitleEl.textContent = `Histórico — ${periodLabel}`;
+        if (captionEl) captionEl.textContent = `Resumo de ${periodLabel.toLowerCase()}.`;
 
         const canViewEarnings = data.canViewEarnings !== false;
         if (!canViewEarnings) {
@@ -254,37 +406,39 @@ async function loadMyEarnings(period = 'month') {
             totalOrdersEl.innerText = data.totalOrders || 0;
             commissionEl.innerText = 'Restrito';
         } else {
-            totalGanhosEl.innerText = formatMZN(data.totalGanhos);
+            totalGanhosEl.innerText = formatDriverMZN(data.totalGanhos);
             totalOrdersEl.innerText = data.totalOrders;
             commissionEl.innerText = `${data.commissionRate} %`;
         }
-        
-        tableBody.innerHTML = ''; 
+
+        tableBody.innerHTML = '';
         if (!Array.isArray(data.ordersList) || data.ordersList.length === 0) {
             const periodText = data.period?.label || (safePeriod === 'day' ? 'hoje' : safePeriod === 'week' ? 'esta semana' : 'este mês');
-            tableBody.innerHTML = `<tr><td colspan="4">Nenhuma entrega concluída para ${periodText}.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="4">Sem entregas concluídas para ${escapeHtml(periodText)}.</td></tr>`;
             return;
         }
-        
+
         data.ordersList.forEach(order => {
             const orderId = String(order._id || order.id || '');
             const completedAt = order.timestamp_completed ? new Date(order.timestamp_completed).toLocaleDateString('pt-MZ') : '—';
-            const driverValue = canViewEarnings ? formatMZN(Number(order.valor_motorista || 0)) : 'Restrito';
+            const driverValue = canViewEarnings ? formatDriverMZN(Number(order.valor_motorista || 0)) : 'Restrito';
+            const priceValue = formatDriverMZN(Number(order.price || 0));
             tableBody.innerHTML += `
-                <tr>
-                    <td>${completedAt}</td>
-                    <td>#${orderId.slice(-6)}</td>
-                    <td>${formatMZN(Number(order.price || 0))}</td>
-                    <td class="${canViewEarnings ? 'value-success' : 'muted-value'}">${driverValue}</td>
+                <tr class="driver-earning-row">
+                    <td data-label="Data">${escapeHtml(completedAt)}</td>
+                    <td data-label="Pedido">#${escapeHtml(orderId.slice(-6))}</td>
+                    <td data-label="Valor">${escapeHtml(priceValue)}</td>
+                    <td data-label="Ganho" class="${canViewEarnings ? 'value-success' : 'muted-value'}">${escapeHtml(driverValue)}</td>
                 </tr>
             `;
         });
-        
-    } catch (error) { 
+
+    } catch (error) {
         console.error('Falha ao carregar ganhos:', error);
-        tableBody.innerHTML = '<tr><td colspan="4" class="table-error">Erro ao carregar extrato. Tente novamente.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="4" class="table-error">Erro ao carregar. Tente novamente.</td></tr>';
     }
 }
+
 
 /* --- Lógica de UI (Mostrar/Esconder Secções) --- */
 
@@ -295,6 +449,51 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+function formatDriverMZN(value) {
+    return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(Number(value || 0));
+}
+
+function getDriverPaymentLabel(paymentMethod) {
+    const paymentMap = {
+        cash: 'Dinheiro',
+        mpesa: 'M-Pesa',
+        emola: 'e-Mola',
+        mkesh: 'mKesh',
+        bank_transfer: 'Transferência bancária',
+        pos: 'POS',
+        postpaid_credit: 'Cliente Pós-pago / Crédito'
+    };
+    return paymentMap[paymentMethod] || paymentMethod || '—';
+}
+
+function getDriverStatusLabel(status) {
+    const statusMap = {
+        pendente: 'Pendente',
+        atribuido: 'Atribuído',
+        recolha_em_progresso: 'Em recolha',
+        em_progresso: 'Em recolha',
+        recolha_concluida: 'Recolha feita',
+        entrega_em_progresso: 'Em entrega',
+        concluido: 'Concluído',
+        cancelado: 'Cancelado'
+    };
+    return statusMap[status] || 'Em análise';
+}
+
+function sanitizePhoneForLink(value) {
+    const raw = String(value || '').trim();
+    const clean = raw.replace(/[^+\d]/g, '');
+    return clean || '';
+}
+
+function buildMapUrl(coord, text) {
+    if (coord && Number.isFinite(Number(coord.lat)) && Number.isFinite(Number(coord.lng))) {
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${Number(coord.lat)},${Number(coord.lng)}`)}`;
+    }
+    const query = String(text || '').trim();
+    return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
 }
 
 function formatCoord(coord) {
@@ -345,18 +544,18 @@ function buildAddressTitle(fullAddress, fallback) {
 function buildDriverRouteSummary(order) {
     const pickupRaw = order.pickup_address_text || order.pickup_address || '';
     const deliveryRaw = order.address_text || order.delivery_address || '';
-    const pickupText = buildAddressTitle(pickupRaw, 'Ponto de recolha');
-    const deliveryText = buildAddressTitle(deliveryRaw, 'Ponto de entrega');
+    const pickupText = buildAddressTitle(pickupRaw, 'Recolha');
+    const deliveryText = buildAddressTitle(deliveryRaw, 'Entrega');
     const distance = Number(order.route_distance_km || order.distance_km || 0);
     const distanceHtml = Number.isFinite(distance) && distance > 0
-        ? `<div class="route-metric-pill"><span>Distância da rota</span><strong>${distance.toFixed(2)} km</strong></div>`
+        ? `<div class="route-metric-pill"><span>Distância</span><strong>${distance.toFixed(2)} km</strong></div>`
         : '';
 
     return `
         <div class="route-point-card route-point-pickup">
             <span class="route-marker-dot"><i class="fas fa-box-open"></i></span>
             <div>
-                <small>Ponto de recolha</small>
+                <small>Recolha</small>
                 ${pickupText}
             </div>
         </div>
@@ -364,7 +563,7 @@ function buildDriverRouteSummary(order) {
         <div class="route-point-card route-point-delivery">
             <span class="route-marker-dot"><i class="fas fa-flag-checkered"></i></span>
             <div>
-                <small>Ponto de entrega</small>
+                <small>Entrega</small>
                 ${deliveryText}
             </div>
         </div>
@@ -372,11 +571,39 @@ function buildDriverRouteSummary(order) {
     `;
 }
 
+function renderDriverQuickActions(order) {
+    const container = document.getElementById('driver-quick-actions');
+    if (!container) return;
+
+    const clientPhone = sanitizePhoneForLink(order.client_phone1);
+    const pickupPhone = sanitizePhoneForLink(order.pickup_contact_phone);
+    const pickupMap = buildMapUrl(order.pickup_address_coords, order.pickup_address_text || order.pickup_address);
+    const deliveryMap = buildMapUrl(order.address_coords, order.address_text || order.delivery_address);
+
+    const actions = [];
+    if (pickupMap) actions.push(`<a href="${escapeHtml(pickupMap)}" target="_blank" rel="noopener" class="driver-quick-action"><i class="fas fa-box-open"></i><span>Recolha</span></a>`);
+    if (deliveryMap) actions.push(`<a href="${escapeHtml(deliveryMap)}" target="_blank" rel="noopener" class="driver-quick-action"><i class="fas fa-map-location-dot"></i><span>Entrega</span></a>`);
+    if (pickupPhone) actions.push(`<a href="tel:${escapeHtml(pickupPhone)}" class="driver-quick-action"><i class="fas fa-phone"></i><span>Ligar loja</span></a>`);
+    if (clientPhone) actions.push(`<a href="tel:${escapeHtml(clientPhone)}" class="driver-quick-action"><i class="fas fa-user-phone"></i><span>Ligar cliente</span></a>`);
+    if (clientPhone) actions.push(`<a href="https://wa.me/${escapeHtml(clientPhone.replace(/^\+/, ''))}" target="_blank" rel="noopener" class="driver-quick-action"><i class="fab fa-whatsapp"></i><span>WhatsApp</span></a>`);
+
+    container.innerHTML = actions.length
+        ? actions.join('')
+        : '<p class="driver-quick-empty">Sem acções rápidas.</p>';
+}
+
 function fillDetalheEntrega(order) {
     const detalheSection = document.getElementById('detalhe-entrega');
     if (!detalheSection) return;
 
-    detalheSection.querySelector('#detalhe-entrega-title').innerText = `Detalhes do Pedido #${order._id.slice(-6)}`;
+    const orderId = String(order._id || order.id || '');
+    detalheSection.querySelector('#detalhe-entrega-title').innerText = `#${orderId.slice(-6)}`;
+    const detailStatus = document.getElementById('driver-detail-status');
+    if (detailStatus) {
+        detailStatus.textContent = getDriverStatusLabel(order.status);
+        detailStatus.className = `driver-order-status-pill status-${order.status || 'pendente'}`;
+    }
+    renderDriverQuickActions(order);
     
     const img = detalheSection.querySelector('#encomenda-imagem');
     const noImg = detalheSection.querySelector('#no-image-placeholder');
@@ -390,8 +617,8 @@ function fillDetalheEntrega(order) {
     }
 
     document.getElementById('detalhe-cliente-nome').innerHTML = `<strong>Nome:</strong> ${escapeHtml(order.client_name || '—')}`;
-    document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Telefone:</strong> ${escapeHtml(order.client_phone1 || '—')}`;
-    document.getElementById('detalhe-pickup-contact').innerHTML = `<strong>Responsável:</strong> ${escapeHtml(order.pickup_contact_name || '—')}`;
+    document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Tel.:</strong> ${escapeHtml(order.client_phone1 || '—')}`;
+    document.getElementById('detalhe-pickup-contact').innerHTML = `<strong>Resp.:</strong> ${escapeHtml(order.pickup_contact_name || '—')}`;
     document.getElementById('detalhe-pickup-phone').innerHTML = `<strong>Contacto:</strong> ${escapeHtml(order.pickup_contact_phone || '—')}`;
     document.getElementById('detalhe-pickup-notes').innerHTML = `<strong>Notas:</strong> ${escapeHtml(order.pickup_notes || 'Sem orientações adicionais')}`;
     document.getElementById('detalhe-cliente-endereco').innerHTML = buildDriverRouteSummary(order);
@@ -629,7 +856,13 @@ let pendingPaymentConfirmation = null;
 
 function closePaymentConfirmationModal() {
     const modal = document.getElementById('payment-confirmation-modal');
+    const amountInput = document.getElementById('payment-confirmed-amount');
     if (modal) modal.classList.add('hidden');
+    if (amountInput) {
+        amountInput.value = '';
+        amountInput.dataset.userTyped = 'false';
+        amountInput.dataset.expectedAmount = '';
+    }
     pendingPaymentConfirmation = null;
 }
 
@@ -659,11 +892,16 @@ function openPaymentConfirmationModal({ orderId, verificationCode, preview, note
     totalEl.textContent = `${amount} MZN`;
     messageEl.textContent = preview.message || 'Código validado. Confirme o pagamento para finalizar.';
     methodEl.textContent = `Método: ${preview.paymentMethodLabel || preview.paymentMethod || '—'}`;
-    amountInput.value = requiresImmediatePayment ? '' : amount;
+    // Segurança operacional: nunca pré-preencher o valor a confirmar.
+    // O motorista deve escrever manualmente o valor recebido no acto.
+    amountInput.value = '';
+    amountInput.dataset.userTyped = 'false';
+    amountInput.dataset.expectedAmount = String(amount);
     amountInput.required = requiresImmediatePayment;
+    amountInput.readOnly = !requiresImmediatePayment;
     amountGroup.classList.toggle('hidden', !requiresImmediatePayment);
     button.innerHTML = requiresImmediatePayment
-        ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
+        ? '<i class="fas fa-check-circle"></i> Confirmar valor e finalizar'
         : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
     modal.classList.remove('hidden');
     if (requiresImmediatePayment) {
@@ -704,18 +942,44 @@ async function handlePaymentPreview(event, orderId) {
     }
 }
 
+function parsePaymentAmount(value) {
+    const normalized = String(value || '').trim().replace(/\s+/g, '').replace(',', '.');
+    if (!normalized) return NaN;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 async function submitPaymentConfirmation() {
     if (!pendingPaymentConfirmation) return;
     const { orderId, verificationCode, preview, notes } = pendingPaymentConfirmation;
     const button = document.getElementById('btn-confirm-payment-finalize');
     const amountInput = document.getElementById('payment-confirmed-amount');
     const requiresImmediatePayment = preview.requiresImmediatePayment !== false;
-    const amount = requiresImmediatePayment ? amountInput.value : preview.totalToPay;
+    const expectedAmount = Number(preview.totalToPay || 0);
+    let amount = null;
 
-    if (requiresImmediatePayment && String(amount).trim() === '') {
-        showCustomAlert('Erro', 'Introduza o valor recebido para confirmar.', 'error');
-        amountInput.focus();
-        return;
+    if (requiresImmediatePayment) {
+        const rawAmount = amountInput?.value || '';
+        const manuallyTyped = amountInput?.dataset.userTyped === 'true';
+        amount = parsePaymentAmount(rawAmount);
+
+        if (!manuallyTyped) {
+            showCustomAlert('Erro', 'O motorista tem de escrever manualmente o valor recebido antes de finalizar.', 'error');
+            amountInput?.focus();
+            return;
+        }
+
+        if (!Number.isFinite(amount)) {
+            showCustomAlert('Erro', 'Introduza um valor recebido válido.', 'error');
+            amountInput?.focus();
+            return;
+        }
+
+        if (Math.round(amount * 100) !== Math.round(expectedAmount * 100)) {
+            showCustomAlert('Valor divergente', `O valor digitado deve ser exactamente ${expectedAmount.toFixed(2)} MZN.`, 'error');
+            amountInput?.focus();
+            return;
+        }
     }
 
     button.disabled = true;
@@ -742,7 +1006,7 @@ async function submitPaymentConfirmation() {
     } finally {
         button.disabled = false;
         button.innerHTML = requiresImmediatePayment
-            ? '<i class="fas fa-check-circle"></i> Finalizar e Marcar como Pago'
+            ? '<i class="fas fa-check-circle"></i> Confirmar valor e finalizar'
             : '<i class="fas fa-check-circle"></i> Finalizar Pós-pago';
     }
 }
