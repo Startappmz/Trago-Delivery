@@ -21,7 +21,10 @@
     <link rel="stylesheet" href="global.css">
     <link rel="stylesheet" href="dashboard.css">
     <link rel="stylesheet" href="trago-system.css">
+    <link rel="stylesheet" href="admin-mobile-shell.css">
     
+
+
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -480,13 +483,17 @@
                 </div>
 
                 <div class="glass-card table-card section-spaced">
-                    <div class="card-header">
+                    <div class="card-header vehicle-card-header">
                         <div>
                             <h2 class="card-title">Veículos Registados</h2>
                             <p class="card-subtitle">Controlo de matrículas, estado operacional e associação à frota</p>
                         </div>
+                        <button type="button" class="btn btn-outline btn-compact-toggle" id="toggle-vehicle-form-motoristas" data-target-form="form-add-veiculo-motoristas" aria-expanded="false">
+                            <i class="fas fa-plus"></i>
+                            <span>Novo Veículo</span>
+                        </button>
                     </div>
-                    <form id="form-add-veiculo-motoristas" class="nested-form-card inline-vehicle-form">
+                    <form id="form-add-veiculo-motoristas" class="nested-form-card inline-vehicle-form is-collapsed" data-collapsible-form="true" hidden>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="vehicle-plate-motoristas">Matrícula</label>
@@ -949,8 +956,70 @@
 
             <!-- MAPA TEMPO REAL -->
             <div id="mapa-tempo-real" class="content-page hidden">
-                <div class="glass-card map-card-shell">
-                    <div id="live-map-container"></div>
+                <div class="live-map-dashboard-shell">
+                    <div class="live-map-toolbar glass-card">
+                        <div class="live-map-heading">
+                            <span class="live-map-kicker"><i class="fas fa-satellite-dish"></i> Live</span>
+                            <h2>Mapa Live</h2>
+                            <small id="live-map-last-updated">A aguardar GPS...</small>
+                        </div>
+                        <div class="live-map-actions" aria-label="Acções rápidas do mapa">
+                            <button type="button" class="live-map-action" id="btn-live-map-refresh"><i class="fas fa-rotate"></i><span>Sync</span></button>
+                            <button type="button" class="live-map-action" id="btn-live-map-fit"><i class="fas fa-expand"></i><span>Todos</span></button>
+                            <button type="button" class="live-map-action" id="btn-live-map-maputo"><i class="fas fa-location-crosshairs"></i><span>Maputo</span></button>
+                            <button type="button" class="live-map-action live-map-action-toggle" id="btn-live-map-follow" aria-pressed="false"><i class="fas fa-crosshairs"></i><span>Seguir</span></button>
+                        </div>
+                    </div>
+
+                    <div class="live-map-stats glass-card" aria-label="Resumo do mapa em tempo real">
+                        <button type="button" class="live-map-stat active" data-driver-filter="all">
+                            <strong id="live-map-count-all">0</strong>
+                            <span>Todos</span>
+                        </button>
+                        <button type="button" class="live-map-stat" data-driver-filter="free">
+                            <strong id="live-map-count-free">0</strong>
+                            <span>Livre</span>
+                        </button>
+                        <button type="button" class="live-map-stat" data-driver-filter="busy">
+                            <strong id="live-map-count-busy">0</strong>
+                            <span>Ocup.</span>
+                        </button>
+                        <button type="button" class="live-map-stat" data-driver-filter="offline">
+                            <strong id="live-map-count-offline">0</strong>
+                            <span>Inact.</span>
+                        </button>
+                    </div>
+
+                    <div class="live-map-layout">
+                        <div class="glass-card map-card-shell live-map-card-enhanced">
+                            <div id="live-map-container"></div>
+                            <div class="live-map-corner-panel" id="live-map-corner-panel">
+                                <span class="pulse-dot"></span>
+                                <span id="live-map-sync-state">Live activo</span>
+                            </div>
+                            <div class="live-map-floating-controls" aria-label="Ferramentas rápidas do mapa">
+                                <button type="button" id="btn-live-map-trails" class="live-map-float-btn" aria-pressed="true" title="Mostrar ou ocultar trilhos"><i class="fas fa-route"></i><span>Trilhos</span></button>
+                                <button type="button" id="btn-live-map-panel" class="live-map-float-btn" aria-pressed="true" title="Mostrar ou ocultar lista"><i class="fas fa-list"></i><span>Lista</span></button>
+                                <button type="button" id="btn-live-map-density" class="live-map-float-btn" aria-pressed="false" title="Alternar mapa compacto"><i class="fas fa-compress-alt"></i><span>Mini</span></button>
+                            </div>
+                            <div class="live-map-focus-card" id="live-map-focus-card">
+                                <i class="fas fa-hand-pointer"></i>
+                                <span>Toque num motorista para seguir, ver estado e última posição.</span>
+                            </div>
+                        </div>
+                        <aside class="glass-card live-drivers-panel" aria-label="Motoristas rastreados">
+                            <div class="live-drivers-panel-header">
+                                <div>
+                                    <strong>Equipa</strong>
+                                    <small id="live-drivers-panel-copy">Toque para focar.</small>
+                                </div>
+                                <span id="live-map-visible-count">0</span>
+                            </div>
+                            <div id="live-drivers-list" class="live-drivers-list">
+                                <div class="live-driver-empty"><i class="fas fa-location-dot"></i><span>Nenhuma localização activa.</span></div>
+                            </div>
+                        </aside>
+                    </div>
                 </div>
             </div>
 
@@ -1330,6 +1399,78 @@
         </div>
     </main>
     
+
+
+    <!-- ADMIN MOBILE SHELL -->
+    <nav class="admin-bottom-nav" id="admin-bottom-nav" aria-label="Navegação rápida do administrador">
+        <button type="button" class="admin-bottom-item active" data-mobile-nav="nav-visao-geral" aria-label="Visão Geral">
+            <i class="fas fa-chart-line"></i>
+            <span>Visão</span>
+        </button>
+        <button type="button" class="admin-bottom-item" data-mobile-nav="nav-entregas" aria-label="Entregas activas">
+            <i class="fas fa-route"></i>
+            <span>Entregas</span>
+        </button>
+        <button type="button" class="admin-bottom-item admin-bottom-primary" data-mobile-role="new" id="admin-mobile-new-toggle" aria-label="Nova entrega">
+            <i class="fas fa-plus"></i>
+            <span>Novo</span>
+        </button>
+        <button type="button" class="admin-bottom-item" data-mobile-nav="nav-motoristas" aria-label="Motoristas">
+            <i class="fas fa-motorcycle"></i>
+            <span>Equipa</span>
+        </button>
+        <button type="button" class="admin-bottom-item" data-mobile-role="more" id="admin-mobile-more-toggle" aria-label="Mais opções">
+            <i class="fas fa-ellipsis-h"></i>
+            <span>Mais</span>
+        </button>
+    </nav>
+
+    <div class="admin-mobile-sheet hidden" id="admin-mobile-new-sheet" aria-hidden="true">
+        <button type="button" class="admin-sheet-backdrop" data-mobile-sheet-close="new" aria-label="Fechar"></button>
+        <section class="admin-sheet-panel" role="dialog" aria-modal="true" aria-label="Criar nova entrega">
+            <div class="admin-sheet-handle"></div>
+            <div class="admin-sheet-header">
+                <div>
+                    <strong>Nova entrega</strong>
+                    <small>Escolha o tipo de serviço</small>
+                </div>
+                <button type="button" class="admin-sheet-close" data-mobile-sheet-close="new" aria-label="Fechar">×</button>
+            </div>
+            <div class="admin-sheet-grid admin-sheet-grid-services">
+                <button type="button" data-mobile-service="rapido"><i class="fas fa-bolt"></i><span>Delivery rápido</span></button>
+                <button type="button" data-mobile-service="doc"><i class="fas fa-file-alt"></i><span>Documentos</span></button>
+                <button type="button" data-mobile-service="farma"><i class="fas fa-pills"></i><span>Farmácia</span></button>
+                <button type="button" data-mobile-service="carga"><i class="fas fa-truck"></i><span>Cargas</span></button>
+                <button type="button" data-mobile-service="restaurante_comida"><i class="fas fa-utensils"></i><span>Restaurante</span></button>
+                <button type="button" data-mobile-service="mercadoria_cp"><i class="fas fa-boxes-stacked"></i><span>Mercadoria C/P</span></button>
+                <button type="button" data-mobile-service="refeicao_restaurante_p"><i class="fas fa-bowl-food"></i><span>Refeição P</span></button>
+                <button type="button" data-mobile-service="outros"><i class="fas fa-ellipsis-h"></i><span>Outros</span></button>
+            </div>
+        </section>
+    </div>
+
+    <div class="admin-mobile-sheet hidden" id="admin-mobile-more-sheet" aria-hidden="true">
+        <button type="button" class="admin-sheet-backdrop" data-mobile-sheet-close="more" aria-label="Fechar"></button>
+        <section class="admin-sheet-panel" role="dialog" aria-modal="true" aria-label="Mais opções do administrador">
+            <div class="admin-sheet-handle"></div>
+            <div class="admin-sheet-header">
+                <div>
+                    <strong>Mais opções</strong>
+                    <small>Gestão e relatórios</small>
+                </div>
+                <button type="button" class="admin-sheet-close" data-mobile-sheet-close="more" aria-label="Fechar">×</button>
+            </div>
+            <div class="admin-sheet-grid">
+                <button type="button" data-mobile-nav="nav-clientes"><i class="fas fa-users"></i><span>Clientes</span></button>
+                <button type="button" data-mobile-nav="nav-custos"><i class="fas fa-money-bill-wave"></i><span>Custos</span></button>
+                <button type="button" data-mobile-nav="nav-cargos"><i class="fas fa-id-badge"></i><span>Cargos</span></button>
+                <button type="button" data-mobile-nav="nav-historico"><i class="fas fa-history"></i><span>Histórico</span></button>
+                <button type="button" data-mobile-nav="nav-mapa"><i class="fas fa-map-marked-alt"></i><span>Mapa</span></button>
+                <button type="button" data-mobile-nav="nav-config"><i class="fas fa-cog"></i><span>Config.</span></button>
+            </div>
+        </section>
+    </div>
+
     <!-- Scripts -->
     <script src="templatemo-glass-admin-script.js"></script>
     <script src="js/common/supabaseConfig.js"></script>

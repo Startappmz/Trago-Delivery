@@ -3518,3 +3518,12 @@ textarea,
     max-width: none;
   }
 }
+
+/* V6.5 — Remoção global do botão de alternar tema */
+.theme-toggle-float,
+#theme-toggle {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
