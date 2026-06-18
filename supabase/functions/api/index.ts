@@ -1687,8 +1687,12 @@ const handleOrderAction = async (req: Request, orderId: string, action: string, 
     let paymentUpdate: AnyRecord;
 
     if (requiresPayment) {
-      const confirmed = toNumber(body.payment_amount_confirmed, NaN);
-      if (Number.isNaN(confirmed)) throw new HttpError(400, 'Introduza o valor recebido para confirmar o pagamento.');
+      const rawConfirmed = body.payment_amount_confirmed;
+      if (rawConfirmed === undefined || rawConfirmed === null || String(rawConfirmed).trim() === '') {
+        throw new HttpError(400, 'Introduza manualmente o valor recebido para confirmar o pagamento.');
+      }
+      const confirmed = Number(String(rawConfirmed).trim().replace(',', '.'));
+      if (!Number.isFinite(confirmed)) throw new HttpError(400, 'Introduza um valor recebido válido.');
       if (Math.round(confirmed * 100) !== Math.round(totalPrice * 100)) {
         await updateRow('orders', order.id, {
           payment_status: PAYMENT_STATUS.AWAITING_DRIVER_CONFIRMATION,

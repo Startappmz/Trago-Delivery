@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     attachEventListeners();
     initAdminNotificationCenter();
     installResponsiveTableObserver();
+    initAdminMobileShell();
+    initCollapsibleVehicleForms();
 
     loadAdminProfile(); // 👈 ESTA LINHA
     
@@ -163,6 +165,12 @@ function attachEventListeners() {
     const vehicleForms = [document.getElementById('form-add-veiculo'), document.getElementById('form-add-veiculo-motoristas')].filter(Boolean);
     vehicleForms.forEach((vehicleForm) => {
         vehicleForm.addEventListener('submit', handleAddVehicle);
+        vehicleForm.addEventListener('submit', () => {
+            const keepOpen = vehicleForm.dataset.keepOpen === 'true';
+            if (!keepOpen) {
+                window.setTimeout(() => collapseVehicleForm(vehicleForm.id), 120);
+            }
+        });
     });
 
     const driverTypeSelect = document.getElementById('driver-type');
@@ -224,6 +232,60 @@ function attachEventListeners() {
     });
 }
 
+
+function collapseVehicleForm(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    const toggle = document.querySelector(`[data-target-form="${formId}"]`);
+    form.classList.add('is-collapsed');
+    form.hidden = true;
+    form.dataset.keepOpen = 'false';
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.classList.remove('is-open');
+        const icon = toggle.querySelector('i');
+        const label = toggle.querySelector('span');
+        if (icon) icon.className = 'fas fa-plus';
+        if (label && formId === 'form-add-veiculo-motoristas') label.textContent = 'Novo Veículo';
+    }
+}
+
+function expandVehicleForm(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    const toggle = document.querySelector(`[data-target-form="${formId}"]`);
+    form.classList.remove('is-collapsed');
+    form.hidden = false;
+    form.dataset.keepOpen = 'true';
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.classList.add('is-open');
+        const icon = toggle.querySelector('i');
+        const label = toggle.querySelector('span');
+        if (icon) icon.className = 'fas fa-chevron-up';
+        if (label && formId === 'form-add-veiculo-motoristas') label.textContent = 'Fechar Formulário';
+    }
+}
+
+function toggleVehicleForm(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    if (form.hidden || form.classList.contains('is-collapsed')) {
+        expandVehicleForm(formId);
+    } else {
+        collapseVehicleForm(formId);
+    }
+}
+
+function initCollapsibleVehicleForms() {
+    document.querySelectorAll('[data-target-form]').forEach((toggle) => {
+        const formId = toggle.getAttribute('data-target-form');
+        if (!formId) return;
+        collapseVehicleForm(formId);
+        toggle.addEventListener('click', () => toggleVehicleForm(formId));
+    });
+}
+
 /* --- Lógica de Navegação (Router) --- */
 
 /**
@@ -251,6 +313,7 @@ function showPage(pageId, navId, title) {
     if (navLink) navLink.classList.add('active');
     
     document.getElementById('main-title').innerText = title;
+    setAdminMobileActive(pageId);
     
     // Carrega os dados específicos da página
     switch (pageId) {
@@ -322,6 +385,98 @@ function showServiceForm(serviceType) {
             window.TragoGeoPricing.initDeliveryPricingForm();
         }
     }, 100);
+}
+
+
+
+/* --- Mobile Shell do Admin --- */
+function initAdminMobileShell() {
+    const bottomNav = document.getElementById('admin-bottom-nav');
+    if (!bottomNav) return;
+
+    const newSheet = document.getElementById('admin-mobile-new-sheet');
+    const moreSheet = document.getElementById('admin-mobile-more-sheet');
+
+    const openSheet = (sheet) => {
+        if (!sheet) return;
+        closeAdminMobileSheets();
+        sheet.classList.remove('hidden');
+        sheet.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('admin-sheet-open');
+    };
+
+    document.getElementById('admin-mobile-new-toggle')?.addEventListener('click', () => {
+        setAdminMobileActive('form-nova-entrega');
+        openSheet(newSheet);
+    });
+
+    document.getElementById('admin-mobile-more-toggle')?.addEventListener('click', () => {
+        setAdminMobileActive('more');
+        openSheet(moreSheet);
+    });
+
+    document.querySelectorAll('[data-mobile-nav]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const navId = button.getAttribute('data-mobile-nav');
+            const navElement = document.getElementById(navId);
+            closeAdminMobileSheets();
+            if (navElement) navElement.click();
+        });
+    });
+
+    document.querySelectorAll('[data-mobile-service]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const serviceType = button.getAttribute('data-mobile-service');
+            closeAdminMobileSheets();
+            if (serviceType) showServiceForm(serviceType);
+            setAdminMobileActive('form-nova-entrega');
+        });
+    });
+
+    document.querySelectorAll('[data-mobile-sheet-close]').forEach((button) => {
+        button.addEventListener('click', closeAdminMobileSheets);
+    });
+
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeAdminMobileSheets();
+    });
+}
+
+function closeAdminMobileSheets() {
+    document.querySelectorAll('.admin-mobile-sheet').forEach((sheet) => {
+        sheet.classList.add('hidden');
+        sheet.setAttribute('aria-hidden', 'true');
+    });
+    document.body.classList.remove('admin-sheet-open');
+}
+
+function setAdminMobileActive(pageId) {
+    const bottomNav = document.getElementById('admin-bottom-nav');
+    if (!bottomNav) return;
+
+    bottomNav.querySelectorAll('.admin-bottom-item').forEach((item) => item.classList.remove('active'));
+
+    const pageToNav = {
+        'visao-geral': 'nav-visao-geral',
+        'entregas-activas': 'nav-entregas',
+        'gestao-motoristas': 'nav-motoristas',
+        'gestao-clientes': 'more',
+        'custos': 'more',
+        'cargos': 'more',
+        'historico': 'more',
+        'mapa-tempo-real': 'more',
+        'configuracoes': 'more',
+        'form-nova-entrega': 'new',
+        'more': 'more'
+    };
+
+    const activeKey = pageToNav[pageId] || 'more';
+    const selector = activeKey.startsWith('nav-')
+        ? `[data-mobile-nav="${activeKey}"]`
+        : `[data-mobile-role="${activeKey}"]`;
+
+    const activeItem = bottomNav.querySelector(selector);
+    if (activeItem) activeItem.classList.add('active');
 }
 
 /* --- Lógica de Supabase Realtime --- */

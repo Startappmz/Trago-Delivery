@@ -681,10 +681,16 @@ const completeDelivery = asyncHandler(async (req, res) => {
   const totalPrice = Number(order.price || 0);
 
   if (requiresImmediatePayment) {
-    const confirmed = Number(paymentAmountConfirmed);
-    if (Number.isNaN(confirmed)) {
+    const rawPaymentAmount = paymentAmountConfirmed;
+    if (rawPaymentAmount === undefined || rawPaymentAmount === null || String(rawPaymentAmount).trim() === '') {
       res.status(400);
-      throw new Error('Introduza o valor recebido para confirmar o pagamento.');
+      throw new Error('Introduza manualmente o valor recebido para confirmar o pagamento.');
+    }
+
+    const confirmed = Number(String(rawPaymentAmount).trim().replace(',', '.'));
+    if (!Number.isFinite(confirmed)) {
+      res.status(400);
+      throw new Error('Introduza um valor recebido válido.');
     }
 
     const expectedCents = Math.round(totalPrice * 100);

@@ -14,10 +14,15 @@
     let driverMarker = null;
     let driverAccuracyCircle = null;
     let routeLayer = null;
+    let driverTrailLayer = null;
+    let driverTrailPoints = [];
     let currentOrder = null;
     let lastDriverPosition = null;
     let resizeObserver = null;
     let renderSequence = 0;
+    let followDriver = false;
+    let markerAnimationFrame = null;
+    let compactMapMode = false;
 
     const DEFAULT_CENTER = [-25.9655, 32.5832];
     const DEFAULT_ZOOM = 13;
@@ -46,6 +51,102 @@
         el.dataset.state = mode;
     }
 
+    function setMapGuidance(message, mode = 'idle') {
+        const box = document.getElementById('driver-map-guidance');
+        const text = document.getElementById('driver-map-guidance-text');
+        if (text) text.textContent = message;
+        if (box) box.dataset.mode = mode;
+    }
+
+    function getActiveRouteTarget() {
+        const status = currentOrder?.status || '';
+        if (status === 'entrega_em_progresso' || status === 'recolha_concluida') {
+            return { label: 'entrega', coord: currentOrder?.address_coords, icon: 'fa-flag-checkered' };
+        }
+        return { label: 'recolha', coord: currentOrder?.pickup_address_coords, icon: 'fa-box-open' };
+    }
+
+    function updateRouteGuidance(position = lastDriverPosition) {
+        if (!currentOrder) {
+            setMapGuidance('A aguardar pedido para orientar a rota.');
+            return;
+        }
+
+        const target = getActiveRouteTarget();
+        if (!isValidCoord(target.coord)) {
+            setMapGuidance('Este pedido ainda não tem coordenadas suficientes.', 'warning');
+            return;
+        }
+
+        if (!isValidCoord(position)) {
+            setMapGuidance(`Siga para a ${target.label}; GPS ainda sem posição actual.`, 'waiting');
+            return;
+        }
+
+        const km = distanceKm(position, target.coord);
+        if (!Number.isFinite(km)) {
+            setMapGuidance(`Siga para a ${target.label}.`, 'waiting');
+            return;
+        }
+
+        if (km <= 0.08) {
+            setMapGuidance(`Está muito perto da ${target.label}. Confirme o ponto antes de avançar.`, 'near');
+            return;
+        }
+
+        setMapGuidance(`Próximo passo: ${target.label} · ${formatDistance(km)} restantes.`, 'active');
+    }
+
+    function setDriverButtonPressed(id, value) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.classList.toggle('is-active', Boolean(value));
+        btn.setAttribute('aria-pressed', String(Boolean(value)));
+    }
+
+    function setHudValue(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    }
+
+    function formatDistance(km) {
+        if (!Number.isFinite(km)) return '—';
+        if (km < 1) return `${Math.max(1, Math.round(km * 1000))} m`;
+        return `${km.toFixed(km < 10 ? 1 : 0)} km`;
+    }
+
+    function distanceKm(a, b) {
+        if (!isValidCoord(a) || !isValidCoord(b)) return NaN;
+        const R = 6371;
+        const lat1 = Number(a.lat) * Math.PI / 180;
+        const lat2 = Number(b.lat) * Math.PI / 180;
+        const dLat = (Number(b.lat) - Number(a.lat)) * Math.PI / 180;
+        const dLng = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
+        const sinLat = Math.sin(dLat / 2);
+        const sinLng = Math.sin(dLng / 2);
+        const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+        return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    }
+
+    function updateRouteHud(position = lastDriverPosition) {
+        const pickup = currentOrder?.pickup_address_coords;
+        const delivery = currentOrder?.address_coords;
+        const accuracy = Number(position?.accuracy);
+
+        setHudValue('driver-map-accuracy', Number.isFinite(accuracy) ? `±${Math.round(accuracy)}m` : 'GPS —');
+
+        if (!isValidCoord(position)) {
+            setHudValue('driver-map-distance-pickup', 'Rec.: —');
+            setHudValue('driver-map-distance-delivery', 'Ent.: —');
+            updateRouteGuidance(position);
+            return;
+        }
+
+        setHudValue('driver-map-distance-pickup', `Rec.: ${formatDistance(distanceKm(position, pickup))}`);
+        setHudValue('driver-map-distance-delivery', `Ent.: ${formatDistance(distanceKm(position, delivery))}`);
+        updateRouteGuidance(position);
+    }
+
     function getMapElement() {
         return document.getElementById('driver-route-map');
     }
@@ -53,7 +154,7 @@
     function isMapElementReady(mapEl) {
         if (!mapEl) return false;
         const rect = mapEl.getBoundingClientRect();
-        return rect.width >= 240 && rect.height >= 260 && mapEl.offsetParent !== null;
+        return rect.width >= 220 && rect.height >= 145 && mapEl.offsetParent !== null;
     }
 
     function waitForVisibleMap(maxAttempts = 20) {
@@ -156,12 +257,15 @@
 
     function clearRoute() {
         if (!map) return;
-        [pickupMarker, deliveryMarker, routeLayer].forEach((layer) => {
+        [pickupMarker, deliveryMarker, routeLayer, driverTrailLayer].forEach((layer) => {
             if (layer) map.removeLayer(layer);
         });
         pickupMarker = null;
         deliveryMarker = null;
         routeLayer = null;
+        driverTrailLayer = null;
+        driverTrailPoints = [];
+        updateRouteHud(null);
     }
 
     function escapeHtml(value) {
@@ -190,6 +294,14 @@
         return short || fallback;
     }
 
+    function applyRouteMotion(layer = routeLayer) {
+        if (!layer) return;
+        setTimeout(() => {
+            const path = layer.getElement?.();
+            if (path) path.classList.add('trago-route-line-animated');
+        }, 60);
+    }
+
     function drawFallbackLine(origin, destination) {
         if (!map || !isValidCoord(origin) || !isValidCoord(destination)) return;
         routeLayer = L.polyline([toLatLng(origin), toLatLng(destination)], {
@@ -200,6 +312,7 @@
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(map);
+        applyRouteMotion(routeLayer);
         fitRoute();
     }
 
@@ -224,6 +337,7 @@
 
     async function renderOrderRoute(order) {
         currentOrder = order;
+        updateRouteGuidance(lastDriverPosition);
         const sequence = ++renderSequence;
         const mapEl = await waitForVisibleMap();
         if (sequence !== renderSequence) return;
@@ -270,6 +384,7 @@
                     lineCap: 'round',
                     lineJoin: 'round'
                 }).addTo(activeMap);
+                applyRouteMotion(routeLayer);
                 const distance = Number(route.distance_km || 0).toFixed(2);
                 const duration = route.duration_min ? ` · ${route.duration_min} min` : '';
                 setMapStatus(`Rota carregada: ${distance} km${duration}.`);
@@ -285,6 +400,7 @@
         }
 
         updateDriverMarker(lastDriverPosition);
+        updateRouteHud(lastDriverPosition);
         invalidateMapLayout(6);
     }
 
@@ -308,6 +424,64 @@
                 console.warn('[DriverMap] Não foi possível centralizar rota:', error);
             }
         }, 160);
+    }
+
+    function animateDriverMarkerTo(latLng) {
+        if (!driverMarker) return;
+        if (markerAnimationFrame) cancelAnimationFrame(markerAnimationFrame);
+
+        const start = driverMarker.getLatLng();
+        const end = L.latLng(latLng[0], latLng[1]);
+        const startTime = performance.now();
+        const duration = 520;
+
+        if (Math.abs(start.lat - end.lat) > 0.03 || Math.abs(start.lng - end.lng) > 0.03) {
+            driverMarker.setLatLng(end);
+            return;
+        }
+
+        const step = (now) => {
+            const progress = Math.min(1, (now - startTime) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            driverMarker.setLatLng([
+                start.lat + (end.lat - start.lat) * eased,
+                start.lng + (end.lng - start.lng) * eased
+            ]);
+            if (progress < 1) markerAnimationFrame = requestAnimationFrame(step);
+        };
+        markerAnimationFrame = requestAnimationFrame(step);
+    }
+
+    function updateDriverTrail(latLng) {
+        if (!map || !Array.isArray(latLng)) return;
+        const last = driverTrailPoints[driverTrailPoints.length - 1];
+        if (!last || Math.abs(last[0] - latLng[0]) > 0.00004 || Math.abs(last[1] - latLng[1]) > 0.00004) {
+            driverTrailPoints.push(latLng);
+            if (driverTrailPoints.length > 28) driverTrailPoints.shift();
+        }
+
+        if (driverTrailPoints.length < 2) return;
+
+        if (!driverTrailLayer) {
+            driverTrailLayer = L.polyline(driverTrailPoints, {
+                color: '#2563eb',
+                weight: 4,
+                opacity: 0.42,
+                lineCap: 'round',
+                lineJoin: 'round',
+                interactive: false
+            }).addTo(map);
+            setTimeout(() => driverTrailLayer?.getElement?.()?.classList.add('trago-driver-trail-animated'), 80);
+        } else {
+            driverTrailLayer.setLatLngs(driverTrailPoints);
+        }
+    }
+
+    function syncFollowButton() {
+        const btn = document.getElementById('btn-seguir-motorista');
+        if (!btn) return;
+        btn.classList.toggle('is-active', followDriver);
+        btn.setAttribute('aria-pressed', String(followDriver));
     }
 
     function updateDriverMarker(position) {
@@ -344,7 +518,14 @@
                 zIndexOffset: 1200
             }).addTo(map).bindPopup('A sua posição actual');
         } else {
-            driverMarker.setLatLng(latLng);
+            animateDriverMarkerTo(latLng);
+        }
+
+        updateDriverTrail(latLng);
+        updateRouteHud(position);
+
+        if (followDriver) {
+            map.setView(latLng, Math.max(map.getZoom(), 16), { animate: true });
         }
 
         try {
@@ -382,6 +563,28 @@
         } catch (_) {}
     }
 
+    function toggleFollowDriver() {
+        followDriver = !followDriver;
+        syncFollowButton();
+        if (followDriver) centerOnDriver();
+    }
+
+    function clearDriverTrail() {
+        driverTrailPoints = [];
+        if (driverTrailLayer) {
+            driverTrailLayer.setLatLngs([]);
+        }
+        setMapStatus('Trilho percorrido limpo.');
+    }
+
+    function toggleCompactMap() {
+        compactMapMode = !compactMapMode;
+        const card = document.querySelector('#detalhe-entrega .driver-map-card');
+        if (card) card.classList.toggle('is-mini-map', compactMapMode);
+        setDriverButtonPressed('btn-mapa-compacto', compactMapMode);
+        invalidateMapLayout(6);
+    }
+
     document.addEventListener('driver_location_updated', (event) => {
         updateDriverMarker(event.detail || null);
     });
@@ -389,6 +592,11 @@
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-centralizar-rota')?.addEventListener('click', fitRoute);
         document.getElementById('btn-minha-posicao')?.addEventListener('click', centerOnDriver);
+        document.getElementById('btn-seguir-motorista')?.addEventListener('click', toggleFollowDriver);
+        document.getElementById('btn-limpar-trilho')?.addEventListener('click', clearDriverTrail);
+        document.getElementById('btn-mapa-compacto')?.addEventListener('click', toggleCompactMap);
+        syncFollowButton();
+        setDriverButtonPressed('btn-mapa-compacto', compactMapMode);
     });
 
     window.TragoDriverMap = {
@@ -396,6 +604,8 @@
         updateDriverMarker,
         fitRoute,
         centerOnDriver,
+        clearDriverTrail,
+        toggleCompactMap,
         invalidate: () => invalidateMapLayout(6),
         destroy: () => {
             if (resizeObserver) resizeObserver.disconnect();
@@ -408,6 +618,10 @@
             driverMarker = null;
             driverAccuracyCircle = null;
             routeLayer = null;
+            driverTrailLayer = null;
+            driverTrailPoints = [];
+            if (markerAnimationFrame) cancelAnimationFrame(markerAnimationFrame);
+            markerAnimationFrame = null;
         }
     };
 })();
