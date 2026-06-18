@@ -21,63 +21,124 @@
     <!-- Socket.io -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="motorista-body">
+<body class="motorista-body driver-compact-ui">
     <!-- Animated Background -->
     <div class="background"></div>
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
 
-    <!-- Header -->
-    <header class="motorista-header">
-        <img src="assets/logo.svg" alt="Logotipo Trago Delivery" class="motorista-logo">
+    <!-- Header / App Shell -->
+    <header class="motorista-header app-shell-header">
+        <button type="button" class="driver-brand-button" id="driver-brand-home" aria-label="Voltar às entregas">
+            <img src="assets/logo.svg" alt="Logotipo Trago Delivery" class="motorista-logo">
+            <span class="driver-brand-copy">
+                <strong>Trago Driver</strong>
+                <small>Olá, <span id="driver-name-header">Motorista</span></small>
+            </span>
+        </button>
+
+        <div class="driver-live-status" id="driver-header-status" aria-live="polite">
+            <span class="driver-live-dot" aria-hidden="true"></span>
+            <span id="driver-header-status-text">GPS</span>
+        </div>
         
         <div class="motorista-profile">
-            <span>Olá, <strong id="driver-name-header">Motorista</strong></span>
-            
-            <button class="btn-logout" id="driver-earnings" title="Meus Ganhos">
+            <button class="btn-logout driver-top-action" id="driver-earnings" title="Ganhos">
                 <i class="fas fa-file-invoice-dollar"></i>
                 <span class="desktop-only">Ganhos</span>
             </button>
             
-            <button class="btn-logout" id="driver-settings" title="Configurações">
+            <button class="btn-logout driver-top-action" id="driver-settings" title="Configurações">
                 <i class="fas fa-cog"></i>
-                <span class="desktop-only">Configurações</span>
+                <span class="desktop-only">Conta</span>
             </button>
             
-            <button class="btn-logout" id="driver-logout" title="Sair">
+            <button class="btn-logout driver-top-action driver-danger-action" id="driver-logout" title="Sair">
                 <i class="fas fa-sign-out-alt"></i>
                 <span class="desktop-only">Sair</span>
             </button>
         </div>
         
-        <button class="btn-mobile-driver-menu" id="mobile-driver-menu-toggle">
+        <button class="btn-mobile-driver-menu" id="mobile-driver-menu-toggle" aria-label="Abrir menu do motorista">
             <i class="fas fa-bars"></i>
         </button>
     </header>
 
-    <!-- Mobile Menu -->
+    <!-- Mobile Menu: fallback para ecrãs onde a bottom navigation não é suficiente -->
     <div class="driver-mobile-menu" id="driver-mobile-nav">
         <ul>
-            <li id="mobile-nav-ganhos"><a href="#"><i class="fas fa-file-invoice-dollar"></i> Meus Ganhos</a></li>
-            <li id="mobile-nav-config"><a href="#"><i class="fas fa-cog"></i> Configurações</a></li>
+            <li id="mobile-nav-ganhos"><a href="#"><i class="fas fa-file-invoice-dollar"></i> Ganhos</a></li>
+            <li id="mobile-nav-config"><a href="#"><i class="fas fa-user-cog"></i> Conta</a></li>
             <li id="mobile-nav-logout"><a href="#"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
         </ul>
     </div>
 
+    <!-- Bottom Navigation Mobile -->
+    <nav class="driver-bottom-nav" aria-label="Navegação principal do motorista">
+        <button type="button" class="driver-bottom-nav-item active" id="bottom-nav-entregas" data-driver-nav="lista-entregas">
+            <i class="fas fa-motorcycle"></i>
+            <span>Entregas</span>
+        </button>
+        <button type="button" class="driver-bottom-nav-item" id="bottom-nav-ganhos" data-driver-nav="meus-ganhos">
+            <i class="fas fa-wallet"></i>
+            <span>Ganhos</span>
+        </button>
+        <button type="button" class="driver-bottom-nav-item" id="bottom-nav-conta" data-driver-nav="configuracoes-motorista">
+            <i class="fas fa-user-cog"></i>
+            <span>Conta</span>
+        </button>
+        <button type="button" class="driver-bottom-nav-item danger" id="bottom-nav-sair" data-driver-action="logout">
+            <i class="fas fa-power-off"></i>
+            <span>Sair</span>
+        </button>
+    </nav>
+
     <!-- Main Content -->
     <main class="motorista-main">
         <!-- Lista de Entregas -->
-        <section id="lista-entregas" class="content-section">
-            <div class="glass-card">
-                <h2 class="section-title">
-                    <i class="fas fa-tasks"></i>
-                    Minhas Entregas Pendentes
-                </h2>
-                <div id="entregas-container">
+        <section id="lista-entregas" class="content-section driver-home-section">
+            <div class="driver-home-hero">
+                <div class="driver-hero-copy">
+                    <span class="driver-eyebrow">Motorista</span>
+                    <h1>Entregas</h1>
+                    <p id="driver-home-subtitle">Livre para entregas.</p>
+                </div>
+                <button type="button" class="driver-refresh-btn" id="driver-refresh-deliveries" aria-label="Actualizar entregas">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+
+            <div class="driver-status-card" id="driver-status-card">
+                <div class="driver-status-main">
+                    <span class="driver-status-icon"><i class="fas fa-location-arrow"></i></span>
+                    <div>
+                        <strong id="driver-gps-status-title">GPS a iniciar</strong>
+                        <small id="driver-gps-status-text">A aguardar autorização e primeira posição.</small>
+                    </div>
+                </div>
+                <div class="driver-status-meta">
+                    <span id="driver-last-location-time">Última actualização: —</span>
+                </div>
+            </div>
+
+            <div class="glass-card driver-list-card">
+                <div class="driver-section-header">
+                    <div>
+                        <span class="driver-eyebrow">Operação</span>
+                        <h2 class="section-title">
+                            <i class="fas fa-tasks"></i>
+                            Pendentes
+                        </h2>
+                    </div>
+                    <button type="button" class="driver-inline-refresh" id="driver-refresh-deliveries-inline">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Actualizar</span>
+                    </button>
+                </div>
+                <div id="entregas-container" class="driver-deliveries-list">
                     <!-- Os cards serão inseridos aqui pelo JavaScript -->
                 </div>
-
             </div>
         </section>
 
@@ -87,11 +148,12 @@
                 <div class="driver-detail-topbar">
                     <button class="btn-voltar" id="btn-voltar-lista">
                         <i class="fas fa-arrow-left"></i>
-                        <span>Voltar à Lista</span>
+                        <span>Voltar</span>
                     </button>
                     <div>
-                        <p class="driver-eyebrow">Centro de operação do motorista</p>
-                        <h2 class="section-title" id="detalhe-entrega-title">Detalhes do Pedido #123456</h2>
+                        <p class="driver-eyebrow">Operação</p>
+                        <h2 class="section-title" id="detalhe-entrega-title">Pedido #123456</h2>
+                        <span class="driver-order-status-pill" id="driver-detail-status">Estado: —</span>
                     </div>
                 </div>
 
@@ -99,9 +161,9 @@
                     <section class="driver-map-card" aria-label="Navegação interna da entrega">
                         <div class="driver-map-header">
                             <div>
-                                <p class="driver-map-kicker">Navegação interna</p>
-                                <h3><i class="fas fa-map-location-dot"></i> Rota da entrega</h3>
-                                <p id="driver-map-status">Aguardando dados da rota...</p>
+                                <p class="driver-map-kicker">Mapa</p>
+                                <h3><i class="fas fa-map-location-dot"></i> Rota</h3>
+                                <p id="driver-map-status">A aguardar rota...</p>
                             </div>
                             <span class="driver-map-badge" id="driver-location-state">GPS inativo</span>
                         </div>
@@ -119,11 +181,11 @@
                             <div class="route-actions-inline">
                                 <button type="button" class="btn-mapa" id="btn-centralizar-rota">
                                     <i class="fas fa-crosshairs"></i>
-                                    <span>Centralizar rota</span>
+                                    <span>Centralizar</span>
                                 </button>
                                 <button type="button" class="btn-mapa btn-mapa-secondary" id="btn-minha-posicao">
                                     <i class="fas fa-location-arrow"></i>
-                                    <span>Minha posição</span>
+                                    <span>Posição</span>
                                 </button>
                             </div>
                         </div>
@@ -131,7 +193,7 @@
 
                     <aside class="driver-side-panel" aria-label="Informações operacionais da entrega">
                         <div class="detalhes-bloco driver-route-summary-card">
-                            <h3><i class="fas fa-route"></i> Rota operacional</h3>
+                            <h3><i class="fas fa-route"></i> Rota</h3>
                             <div id="detalhe-cliente-endereco" class="route-flow">
                                 <div class="route-point-card"><strong>Recolha:</strong> ...</div>
                                 <div class="route-point-card"><strong>Entrega:</strong> ...</div>
@@ -142,7 +204,7 @@
                         </div>
 
                         <div class="detalhes-bloco pickup-guidance-card">
-                            <h3><i class="fas fa-box-open"></i> Orientação da Recolha</h3>
+                            <h3><i class="fas fa-box-open"></i> Recolha</h3>
                             <p id="detalhe-pickup-contact"><strong>Responsável:</strong> ...</p>
                             <p id="detalhe-pickup-phone"><strong>Contacto:</strong> ...</p>
                             <p id="detalhe-pickup-notes"><strong>Notas:</strong> ...</p>
@@ -152,34 +214,36 @@
                             <h3><i class="fas fa-user"></i> Destinatário</h3>
                             <p id="detalhe-cliente-nome"><strong>Nome:</strong> ...</p>
                             <p id="detalhe-cliente-telefone"><strong>Telefone:</strong> ...</p>
-                            <p id="detalhe-payment-method"><strong>Método de Pagamento:</strong> <span>...</span></p>
+                            <p id="detalhe-payment-method"><strong>Pagamento:</strong> <span>...</span></p>
                         </div>
 
                         <div class="detalhes-bloco action-card">
-                            <h3><i class="fas fa-play-circle"></i> Fluxo da entrega</h3>
+                            <h3><i class="fas fa-bolt"></i> Acções rápidas</h3>
+                            <div class="driver-quick-actions" id="driver-quick-actions"></div>
+                            <h3 class="driver-flow-title"><i class="fas fa-play-circle"></i> Acção</h3>
                             <button class="btn btn-primary btn-iniciar" id="btn-iniciar-entrega">
                                 <i class="fas fa-play-circle"></i>
-                                <span>Iniciar Entrega</span>
+                                <span>Iniciar</span>
                             </button>
                             <form id="form-finalizacao" class="hidden">
                                 <p id="entrega-status" class="status-info">Entrega em progresso...</p>
                                 <div class="form-group">
-                                    <label for="codigo-finalizacao">Código de Verificação (5 dígitos)</label>
+                                    <label for="codigo-finalizacao">Código (5 dígitos)</label>
                                     <input type="text" id="codigo-finalizacao" maxlength="5" minlength="5" placeholder="ABC12" class="form-input" autocomplete="off" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="driver-delivery-notes">Detalhes/Comentários da Entrega</label>
+                                    <label for="driver-delivery-notes">Comentários</label>
                                     <textarea id="driver-delivery-notes" rows="3" placeholder="Ex: pagamento recebido, cliente ausente, referência POS, observação da entrega..." class="form-input"></textarea>
                                 </div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-check-circle"></i>
-                                    <span>Finalizar Entrega</span>
+                                    <span>Finalizar</span>
                                 </button>
                             </form>
                         </div>
 
                         <div class="detalhes-bloco delivery-image-display">
-                            <h3><i class="fas fa-image"></i> Imagem da encomenda</h3>
+                            <h3><i class="fas fa-image"></i> Imagem</h3>
                             <img src="" alt="Imagem da Encomenda" id="encomenda-imagem" class="hidden">
                             <p id="no-image-placeholder" class="hidden">Nenhuma imagem fornecida.</p>
                         </div>
@@ -193,68 +257,93 @@
             <div class="glass-card">
                 <button class="btn-voltar" id="btn-voltar-lista-config">
                     <i class="fas fa-arrow-left"></i>
-                    <span>Voltar às Entregas</span>
+                    <span>Voltar</span>
                 </button>
                 
                 <h2 class="section-title">
                     <i class="fas fa-cog"></i>
-                    Configurações da Conta
+                    Conta
                 </h2>
 
-                <form id="form-change-password-driver" class="config-form">
-                    <div class="form-section">
-                        <h3>Alterar minha Senha</h3>
-                        <p class="form-note">Você será desconectado após alterar a senha.</p>
-                        
-                        <div class="form-group">
-                            <label for="driver-pass-antiga">Senha Antiga</label>
-                            <input type="password" id="driver-pass-antiga" class="form-input" required>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="driver-pass-nova">Nova Senha (mín. 6 caracteres)</label>
-                                <input type="password" id="driver-pass-nova" class="form-input" required minlength="6">
+                <div class="driver-settings-list">
+                    <form id="form-change-password-driver" class="config-form driver-settings-panel">
+                        <details class="driver-settings-accordion">
+                            <summary>
+                                <span class="settings-icon"><i class="fas fa-lock"></i></span>
+                                <span>
+                                    <strong>Segurança</strong>
+                                    <small>Alterar senha de acesso</small>
+                                </span>
+                                <i class="fas fa-chevron-down settings-chevron"></i>
+                            </summary>
+                            <div class="form-section settings-form-body">
+                                <p class="form-note">Será desconectado após alterar a senha.</p>
+                                
+                                <div class="form-group">
+                                    <label for="driver-pass-antiga">Senha actual</label>
+                                    <input type="password" id="driver-pass-antiga" class="form-input" required>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="driver-pass-nova">Nova senha</label>
+                                        <input type="password" id="driver-pass-nova" class="form-input" required minlength="6">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="driver-pass-confirmar">Confirmar senha</label>
+                                        <input type="password" id="driver-pass-confirmar" class="form-input" required minlength="6">
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-key"></i>
+                                    <span>Actualizar</span>
+                                </button>
                             </div>
-                            <div class="form-group">
-                                <label for="driver-pass-confirmar">Confirmar Nova Senha</label>
-                                <input type="password" id="driver-pass-confirmar" class="form-input" required minlength="6">
-                            </div>
+                        </details>
+                    </form>
+
+                    <!-- Secção de Localização -->
+                    <div class="driver-settings-panel driver-location-panel">
+                        <div class="settings-row-head">
+                            <span class="settings-icon"><i class="fas fa-map-marker-alt"></i></span>
+                            <span>
+                                <strong>Localização</strong>
+                                <small id="settings-location-copy">Obrigatória para receber e realizar entregas.</small>
+                            </span>
                         </div>
-                        
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-key"></i>
-                            <span>Atualizar Senha</span>
+                        <button id="btn-reativar-localizacao" class="btn btn-secondary settings-action-btn">
+                            <i class="fas fa-sync-alt"></i>
+                            Reativar GPS
                         </button>
                     </div>
-                </form>
-
-                <!-- Secção de Localização -->
-                <div class="form-section section-spaced">
-                    <h3><i class="fas fa-map-marker-alt"></i> Localização</h3>
-                    <p class="form-note">A localização é obrigatória para o funcionamento do sistema.</p>
-                    <button id="btn-reativar-localizacao" class="btn btn-secondary">
-                        <i class="fas fa-sync-alt"></i>
-                        Reativar Partilha de Localização
-                    </button>
                 </div>
             </div>
         </section>
         
-        <!-- Meus Ganhos -->
+        <!-- Ganhos -->
         <section id="meus-ganhos" class="content-section hidden">
             <div class="glass-card">
                 <button class="btn-voltar" id="btn-voltar-lista-ganhos">
                     <i class="fas fa-arrow-left"></i>
-                    <span>Voltar às Entregas</span>
+                    <span>Voltar</span>
                 </button>
                 
-                <div class="driver-earnings-header">
-                    <h2 class="section-title" id="driver-earnings-title">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                        Meus Ganhos — Este Mês
-                    </h2>
-                    <div class="form-group compact-select-group driver-period-group">
+                <div class="driver-earnings-header driver-earnings-hero">
+                    <div>
+                        <span class="driver-eyebrow">Resumo financeiro</span>
+                        <h2 class="section-title" id="driver-earnings-title">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            Ganhos — Mês
+                        </h2>
+                        <p class="driver-earnings-caption" id="driver-earnings-summary-caption">Acompanhe o seu extracto de entregas concluídas.</p>
+                    </div>
+                    <div class="driver-period-chips" aria-label="Seleccionar período dos ganhos">
+                        <button type="button" class="driver-period-chip" data-driver-period="day">Hoje</button>
+                        <button type="button" class="driver-period-chip" data-driver-period="week">Semana</button>
+                        <button type="button" class="driver-period-chip active" data-driver-period="month">Mês</button>
+                    </div>
+                    <div class="form-group compact-select-group driver-period-group driver-period-select-fallback">
                         <label for="driver-earnings-period-select">Período</label>
                         <select id="driver-earnings-period-select" class="form-input">
                             <option value="day">Hoje</option>
@@ -267,21 +356,21 @@
                 <div class="stats-grid">
                     <div class="glass-card stat-card">
                         <div class="stat-info">
-                            <h3><i class="fas fa-dollar-sign"></i> Total Ganhos</h3>
+                            <h3><i class="fas fa-dollar-sign"></i> Ganhos</h3>
                             <div class="stat-value" id="driver-total-ganhos">...</div>
                         </div>
                     </div>
                     
                     <div class="glass-card stat-card">
                         <div class="stat-info">
-                            <h3><i class="fas fa-tasks"></i> Total Entregas</h3>
+                            <h3><i class="fas fa-tasks"></i> Entregas</h3>
                             <div class="stat-value" id="driver-total-entregas">...</div>
                         </div>
                     </div>
                     
                     <div class="glass-card stat-card">
                         <div class="stat-info">
-                            <h3><i class="fas fa-percent"></i> Minha Comissão</h3>
+                            <h3><i class="fas fa-percent"></i> Comissão</h3>
                             <div class="stat-value" id="driver-commission-rate">... %</div>
                         </div>
                     </div>
@@ -289,9 +378,9 @@
 
                 <div class="table-section driver-completed-section">
                     <div class="table-section-header driver-completed-header">
-                        <h3 id="driver-earnings-table-title">Extrato de Entregas Concluídas — Este Mês</h3>
+                        <h3 id="driver-earnings-table-title">Histórico — Mês</h3>
                         <div class="form-group compact-select-group driver-period-group driver-completed-period-group">
-                            <label for="driver-completed-period-select">Filtrar extrato</label>
+                            <label for="driver-completed-period-select">Filtro</label>
                             <select id="driver-completed-period-select" class="form-input">
                                 <option value="day">Hoje</option>
                                 <option value="week">Esta Semana</option>
@@ -304,9 +393,9 @@
                             <thead>
                                 <tr>
                                     <th>Data</th>
-                                    <th>ID Pedido</th>
+                                    <th>Pedido</th>
                                     <th>Valor (MZN)</th>
-                                    <th>Meu Ganho (MZN)</th>
+                                    <th>Ganho (MZN)</th>
                                 </tr>
                             </thead>
                             <tbody id="driver-earnings-table-body">
@@ -440,6 +529,6 @@
     <script src="js/common/supabaseRealtime.js"></script>
     <script src="js/driver/driverMap.js"></script>
     <script src="js/driver/driverTracking.js"></script>
-    <script src="js/driver/driver.js?v=20260617-payment-force"></script>
+    <script src="js/driver/driver.js?v=20260618-mobile-shell"></script>
 </body>
 </html>
