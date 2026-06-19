@@ -42,6 +42,42 @@ router.post(
   authController.login
 );
 
+
+router.post(
+  '/request-password-reset',
+  [
+    body('email', 'Por favor, insira um email válido').isEmail(),
+    body('role', 'O tipo de utilizador (role) é obrigatório').isIn(['admin', 'driver'])
+  ],
+  validateRequest,
+  authController.requestPasswordReset
+);
+
+router.post(
+  '/confirm-password-reset',
+  [
+    body('email', 'Por favor, insira um email válido').isEmail(),
+    body('role', 'O tipo de utilizador (role) é obrigatório').isIn(['admin', 'driver']),
+    body('code', 'O código de restauração é obrigatório').optional().trim().notEmpty(),
+    body('resetCode', 'O código de restauração é obrigatório').optional().trim().notEmpty(),
+    body('newPassword', 'A nova password deve ter pelo menos 8 caracteres').isLength({ min: 8 })
+  ],
+  validateRequest,
+  authController.confirmPasswordReset
+);
+
+router.post(
+  '/reset-password',
+  [
+    body('email', 'Por favor, insira um email válido').isEmail(),
+    body('role', 'O tipo de utilizador (role) é obrigatório').isIn(['admin', 'driver']),
+    body('resetCode', 'O código de restauração é obrigatório').trim().notEmpty(),
+    body('newPassword', 'A nova password deve ter pelo menos 8 caracteres').isLength({ min: 8 })
+  ],
+  validateRequest,
+  authController.confirmPasswordReset
+);
+
 router.post('/logout', protect, authController.logout);
 
 router.put(

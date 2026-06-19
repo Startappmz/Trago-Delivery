@@ -43,12 +43,19 @@ async function loadManagers() {
           <td>${manager.telefone || 'N/A'}</td>
           <td>${manager.email}</td>
           <td>
-            <button class="btn-action-small btn-primary" onclick="handleEditManager('${manager._id}')">
-              <i class="fas fa-edit"></i>
-            </button>
-            <button class="btn-action-small btn-danger" onclick="deleteManager('${manager._id}')">
-              <i class="fas fa-trash"></i>
-            </button>
+            <div class="table-actions">
+              <button type="button" class="btn-action-small btn-primary" onclick="handleEditManager('${manager._id}')">
+                <i class="fas fa-edit"></i>
+              </button>
+              <div class="actions-menu">
+                <button type="button" class="action-menu-toggle" aria-label="Mais opções"><i class="fas fa-ellipsis-v"></i></button>
+                <div class="action-menu-panel" role="menu">
+                  <button type="button" class="action-menu-item danger" onclick="deleteManager('${manager._id}')" role="menuitem">
+                    <i class="fas fa-trash"></i><span>Eliminar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </td>
         </tr>
       `;

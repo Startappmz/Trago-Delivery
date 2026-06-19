@@ -262,3 +262,32 @@ alter table public.system_notifications enable row level security;
 alter table public.trips enable row level security;
 alter table public.expenses enable row level security;
 alter table public.company_costs enable row level security;
+
+-- Restauração profissional de password por email (admin/motorista)
+create table if not exists public.password_reset_codes (
+  id text primary key default public.trago_generate_id(),
+  user_id text not null references public.users(id) on delete cascade,
+  email text not null,
+  role text not null check (role in ('admin', 'driver')),
+  code_hash text not null,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  attempts integer not null default 0 check (attempts >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_password_reset_codes_email_role
+on public.password_reset_codes(email, role);
+
+create index if not exists idx_password_reset_codes_user_active
+on public.password_reset_codes(user_id, role, created_at desc)
+where used_at is null;
+
+create index if not exists idx_password_reset_codes_expires_at
+on public.password_reset_codes(expires_at);
+
+drop trigger if exists trg_password_reset_codes_touch_updated_at on public.password_reset_codes;
+create trigger trg_password_reset_codes_touch_updated_at
+before update on public.password_reset_codes
+for each row execute function public.trago_touch_updated_at();

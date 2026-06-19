@@ -578,9 +578,16 @@ async function loadClients() {
                     <td>${client.billing_type === 'postpaid' ? '<span class="status status-online-livre">Pós-pago</span>' : 'Normal'}</td>
                     <td>${client.billing_type === 'postpaid' ? `${Number(client.credit_balance || 0).toFixed(2)} / ${Number(client.credit_limit || 0).toFixed(2)} MZN` : '—'}</td>
                     <td>
-                        <button class="btn-action btn-action-small" onclick="openEditClientModal('${client._id}')" title="Editar"><i class="fas fa-edit"></i></button>
-                        <button class="btn-action-small btn-action-report" onclick="openStatementModal('${client._id}', '${client.nome}')" title="Ver Extrato"><i class="fas fa-file-invoice-dollar"></i></button>
-                        <button class="btn-action-small btn-danger" onclick="handleDeleteClient('${client._id}', '${client.nome}')" title="Apagar"><i class="fas fa-trash"></i></button>
+                        <div class="table-actions">
+                            <button type="button" class="btn-action btn-action-small" onclick="openEditClientModal('${client._id}')" title="Editar"><i class="fas fa-edit"></i></button>
+                            <button type="button" class="btn-action-small btn-action-report" onclick="openStatementModal('${client._id}', '${client.nome}')" title="Ver Extrato"><i class="fas fa-file-invoice-dollar"></i></button>
+                            <div class="actions-menu">
+                                <button type="button" class="action-menu-toggle" aria-label="Mais opções"><i class="fas fa-ellipsis-v"></i></button>
+                                <div class="action-menu-panel" role="menu">
+                                    <button type="button" class="action-menu-item danger" onclick="handleDeleteClient('${client._id}', '${client.nome}')" role="menuitem"><i class="fas fa-trash"></i><span>Eliminar</span></button>
+                                </div>
+                            </div>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -1249,7 +1256,14 @@ async function loadVehicles() {
                     <td>${v.type || '—'}</td>
                     <td><span class="status status-${String(v.status || 'ativo').replace('_', '-')}">${v.status || 'ativo'}</span></td>
                     <td>${[v.brand, v.model].filter(Boolean).join(' ') || '—'}</td>
-                    <td><button class="btn-action-small btn-danger" onclick="handleDeleteVehicle('${v._id}', '${(v.plate || '').replace(/'/g, '&#039;')}')" title="Apagar"><i class="fas fa-trash"></i></button></td>
+                    <td>
+                        <div class="actions-menu">
+                            <button type="button" class="action-menu-toggle" aria-label="Mais opções"><i class="fas fa-ellipsis-v"></i></button>
+                            <div class="action-menu-panel" role="menu">
+                                <button type="button" class="action-menu-item danger" onclick="handleDeleteVehicle('${v._id}', '${(v.plate || '').replace(/'/g, '&#039;')}')" role="menuitem"><i class="fas fa-trash"></i><span>Eliminar</span></button>
+                            </div>
+                        </div>
+                    </td>
                 </tr>
             `).join('');
         tableBodies.forEach((tableBody) => {

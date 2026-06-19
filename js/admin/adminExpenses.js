@@ -41,9 +41,14 @@ async function loadExpenses() {
           <td>${employeeName}</td>
           <td>${expense.amount.toFixed(2)} MZN</td>
           <td>
-            <button class="btn-action-small btn-danger" onclick="deleteExpense('${expense._id}')">
-              <i class="fas fa-trash"></i>
-            </button>
+            <div class="actions-menu">
+              <button type="button" class="action-menu-toggle" aria-label="Mais opções"><i class="fas fa-ellipsis-v"></i></button>
+              <div class="action-menu-panel" role="menu">
+                <button type="button" class="action-menu-item danger" onclick="deleteExpense('${expense._id}')" role="menuitem">
+                  <i class="fas fa-trash"></i><span>Eliminar</span>
+                </button>
+              </div>
+            </div>
           </td>
         </tr>
       `;

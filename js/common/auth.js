@@ -173,6 +173,174 @@ localStorage.setItem('driverToken', token);
     }
 }
 
+
+/* --- Restauração de password por email nos logins --- */
+let passwordResetRequestInProgress = false;
+let passwordResetConfirmInProgress = false;
+
+function setPasswordResetStep(step) {
+    const confirmSection = document.getElementById('reset-confirm-section');
+    const requestActions = document.querySelector('.reset-request-actions');
+    const instructions = document.getElementById('reset-instructions');
+    const emailInput = document.getElementById('reset-email');
+    const codeInput = document.getElementById('reset-code');
+    const passwordInput = document.getElementById('reset-new-password');
+
+    const isConfirm = step === 'confirm';
+    confirmSection?.classList.toggle('hidden', !isConfirm);
+    requestActions?.classList.toggle('hidden', isConfirm);
+
+    if (emailInput) emailInput.readOnly = isConfirm;
+    if (codeInput) codeInput.required = isConfirm;
+    if (passwordInput) passwordInput.required = isConfirm;
+
+    if (instructions) {
+        instructions.textContent = isConfirm
+            ? 'Enviámos um código temporário para o email indicado. Introduza o código e defina a nova password.'
+            : 'Introduza o email da conta. Enviaremos um código temporário para esse email.';
+    }
+}
+
+function openPasswordResetModal(role) {
+    const modal = document.getElementById('password-reset-modal');
+    const roleInput = document.getElementById('reset-role');
+    const emailInput = document.getElementById('reset-email');
+    const form = document.getElementById('password-reset-form');
+
+    if (!modal || !roleInput || !form) return;
+
+    form.reset();
+    roleInput.value = role;
+    setPasswordResetStep('request');
+
+    const loginEmail = document.getElementById('email')?.value?.trim();
+    if (loginEmail && emailInput) emailInput.value = loginEmail;
+
+    modal.classList.remove('hidden');
+    setTimeout(() => emailInput?.focus?.(), 40);
+}
+
+function closePasswordResetModal() {
+    const modal = document.getElementById('password-reset-modal');
+    const form = document.getElementById('password-reset-form');
+    if (form) form.reset();
+    setPasswordResetStep('request');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function requestPasswordResetCode() {
+    if (passwordResetRequestInProgress) return;
+
+    const role = document.getElementById('reset-role')?.value;
+    const email = document.getElementById('reset-email')?.value?.trim();
+    const button = document.getElementById('reset-request-code-btn');
+
+    if (!role || !email) {
+        showCustomAlert('Dados em falta', 'Introduza o email da conta para receber o código.', 'error');
+        return;
+    }
+
+    passwordResetRequestInProgress = true;
+    const originalHtml = button?.innerHTML;
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A enviar...';
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/auth/request-password-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Não foi possível enviar o código de restauração.');
+
+        setPasswordResetStep('confirm');
+        document.getElementById('reset-code')?.focus?.();
+        showCustomAlert('Código enviado', data.message || 'Se o email existir, receberá um código de restauração.', 'success');
+    } catch (error) {
+        console.error('Falha ao pedir código de restauração:', error);
+        showCustomAlert('Erro', error.message || 'Erro ao enviar código de restauração.', 'error');
+    } finally {
+        passwordResetRequestInProgress = false;
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHtml || 'Enviar código';
+        }
+    }
+}
+
+async function handlePasswordReset(event) {
+    event.preventDefault();
+    if (passwordResetConfirmInProgress) return;
+
+    const form = event.target;
+    const submitButton = form.querySelector('button[type="submit"]');
+    const role = document.getElementById('reset-role')?.value || form.dataset.resetRole;
+    const email = document.getElementById('reset-email')?.value?.trim();
+    const code = document.getElementById('reset-code')?.value?.trim();
+    const newPassword = document.getElementById('reset-new-password')?.value;
+
+    if (!role || !email || !code || !newPassword) {
+        showCustomAlert('Dados em falta', 'Preencha o email, o código recebido e a nova password.', 'error');
+        return;
+    }
+
+    if (String(newPassword).length < 8) {
+        showCustomAlert('Password fraca', 'A nova password deve ter pelo menos 8 caracteres.', 'error');
+        return;
+    }
+
+    passwordResetConfirmInProgress = true;
+    const originalHtml = submitButton?.innerHTML;
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A actualizar...';
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/auth/confirm-password-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, role, code, newPassword })
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'Não foi possível restaurar a password.');
+
+        closePasswordResetModal();
+        showCustomAlert('Password actualizada', data.message || 'A password foi actualizada com sucesso. Já pode iniciar sessão.', 'success');
+    } catch (error) {
+        console.error('Falha ao confirmar restauração de password:', error);
+        showCustomAlert('Erro', error.message || 'Erro ao restaurar password.', 'error');
+    } finally {
+        passwordResetConfirmInProgress = false;
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalHtml || 'Actualizar password';
+        }
+    }
+}
+
+function installPasswordResetHandlers() {
+    document.querySelectorAll('.btn-open-password-reset').forEach((button) => {
+        button.addEventListener('click', () => openPasswordResetModal(button.dataset.resetRole || 'admin'));
+    });
+
+    document.getElementById('reset-request-code-btn')?.addEventListener('click', requestPasswordResetCode);
+
+    const form = document.getElementById('password-reset-form');
+    if (form) form.addEventListener('submit', handlePasswordReset);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installPasswordResetHandlers);
+} else {
+    installPasswordResetHandlers();
+}
+
 function handle401Safely(role) {
     console.warn('⚠️ 401 recebido — verificação segura');
 

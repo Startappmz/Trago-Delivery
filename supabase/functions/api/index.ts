@@ -1,6 +1,6 @@
 // Trago Delivery · Supabase Edge Function API
 // Mantém compatibilidade com as rotas /api/... do front-end antigo,
-// substituindo Express/Render por Supabase Edge Functions + Postgres + Storage + Realtime.
+// substituindo o backend antigo por Supabase Edge Functions + Postgres + Storage + Realtime.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import bcrypt from 'https://esm.sh/bcryptjs@2.4.3';
@@ -25,6 +25,11 @@ const ROUTE_PRICING_POLICY = Object.freeze({
   baseFeeMzn: Number(Deno.env.get('TRAGO_BASE_DISTANCE_FEE_MZN') || '200'),
   extraKmFeeMzn: Number(Deno.env.get('TRAGO_EXTRA_KM_FEE_MZN') || '15')
 });
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+const RESET_EMAIL_FROM = Deno.env.get('RESET_EMAIL_FROM') || 'Trago Delivery <noreply@trago.local>';
+const RESET_EMAIL_REPLY_TO = Deno.env.get('RESET_EMAIL_REPLY_TO') || '';
+const PASSWORD_RESET_TTL_MINUTES = Number(Deno.env.get('PASSWORD_RESET_TTL_MINUTES') || '10');
+const PASSWORD_RESET_MAX_ATTEMPTS = Number(Deno.env.get('PASSWORD_RESET_MAX_ATTEMPTS') || '5');
 
 if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || !JWT_SECRET) {
   console.warn('[trago-edge] Variáveis obrigatórias em falta: TRAGO_SUPABASE_URL, TRAGO_SUPABASE_SECRET_KEY, JWT_SECRET.');
@@ -831,6 +836,60 @@ const generateVerificationCode = () => {
   return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 };
 
+const generatePasswordResetCode = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const value = ((bytes[0] << 24) >>> 0) + (bytes[1] << 16) + (bytes[2] << 8) + bytes[3];
+  return String(value % 1000000).padStart(6, '0');
+};
+
+const escapeHtml = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const sendPasswordResetEmail = async (email: string, code: string, role: Role) => {
+  if (!RESEND_API_KEY) throw new HttpError(503, 'Envio de email não configurado. Defina RESEND_API_KEY no ambiente da Supabase Function.');
+
+  const roleLabel = role === 'driver' ? 'motorista' : 'admin';
+  const subject = 'Código de restauração - Trago Delivery';
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;max-width:520px;margin:0 auto;padding:24px;border:1px solid #e5e7eb">
+      <h2 style="margin:0 0 12px;font-size:20px;color:#111827">Restaurar password</h2>
+      <p>Recebemos um pedido para restaurar a password da sua conta de ${escapeHtml(roleLabel)} no Trago Delivery.</p>
+      <p style="margin:18px 0 6px">O seu código é:</p>
+      <div style="font-size:28px;font-weight:800;letter-spacing:6px;background:#f3f4f6;padding:14px 18px;text-align:center;border:1px solid #d1d5db">${escapeHtml(code)}</div>
+      <p>Este código expira em ${PASSWORD_RESET_TTL_MINUTES} minutos.</p>
+      <p style="color:#6b7280;font-size:13px">Se não fez este pedido, ignore este email.</p>
+    </div>`;
+  const text = `Código de restauração - Trago Delivery\n\nO seu código é: ${code}\n\nEste código expira em ${PASSWORD_RESET_TTL_MINUTES} minutos. Se não fez este pedido, ignore este email.`;
+
+  const payload: AnyRecord = {
+    from: RESET_EMAIL_FROM,
+    to: [email],
+    subject,
+    html,
+    text
+  };
+  if (RESET_EMAIL_REPLY_TO) payload.reply_to = RESET_EMAIL_REPLY_TO;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    console.error('[trago-edge] Falha Resend:', detail);
+    throw new HttpError(502, 'Não foi possível enviar o email de restauração.');
+  }
+};
+
 const uploadOrderImage = async (file: File | null) => {
   if (!file || file.size === 0) return null;
   if (file.size > MAX_IMAGE_BYTES) throw new HttpError(400, 'Imagem acima do limite permitido.');
@@ -878,6 +937,109 @@ const routeAuth = async (req: Request, path: string, method: string) => {
     }, 200, {
       'Set-Cookie': `token=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${JWT_DAYS * 24 * 60 * 60}; SameSite=Strict; Secure`
     });
+  }
+
+
+  if (path === '/api/auth/request-password-reset' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['email', 'role']);
+
+    const role = clean(body.role) as Role;
+    if (!['admin', 'driver'].includes(role)) throw new HttpError(400, 'Tipo de utilizador inválido.');
+
+    const email = lowerEmail(body.email);
+    const genericMessage = 'Se o email existir, receberá um código de restauração.';
+
+    const { data: row, error } = await supabase
+      .from('users')
+      .select('id,email,role,nome')
+      .eq('email', email)
+      .eq('role', role)
+      .maybeSingle();
+
+    if (error) throw new HttpError(500, error.message);
+    if (!row) return json({ message: genericMessage });
+
+    const code = generatePasswordResetCode();
+    const codeHash = bcrypt.hashSync(code, 12);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
+
+    const { error: invalidateError } = await supabase
+      .from('password_reset_codes')
+      .update({ used_at: nowIso(), updated_at: nowIso() })
+      .eq('email', email)
+      .eq('role', role)
+      .is('used_at', null);
+    if (invalidateError) throw new HttpError(500, invalidateError.message);
+
+    const { error: insertError } = await supabase.from('password_reset_codes').insert({
+      id: generateId(),
+      user_id: row.id,
+      email,
+      role,
+      code_hash: codeHash,
+      expires_at: expiresAt,
+      attempts: 0
+    });
+    if (insertError) throw new HttpError(500, insertError.message);
+
+    await sendPasswordResetEmail(email, code, role);
+    return json({ message: genericMessage });
+  }
+
+  if ((path === '/api/auth/confirm-password-reset' || path === '/api/auth/reset-password') && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    const codeInput = body.code ?? body.resetCode;
+    requiredFields({ ...body, code: codeInput }, ['email', 'role', 'code', 'newPassword']);
+
+    const role = clean(body.role) as Role;
+    if (!['admin', 'driver'].includes(role)) throw new HttpError(400, 'Tipo de utilizador inválido.');
+    if (String(body.newPassword).length < 8) throw new HttpError(400, 'A nova password deve ter pelo menos 8 caracteres.');
+
+    const email = lowerEmail(body.email);
+    const { data: row, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('role', role)
+      .maybeSingle();
+
+    if (error) throw new HttpError(500, error.message);
+    if (!row) throw new HttpError(400, 'Código inválido ou expirado.');
+
+    const { data: resetRows, error: resetError } = await supabase
+      .from('password_reset_codes')
+      .select('*')
+      .eq('user_id', row.id)
+      .eq('email', email)
+      .eq('role', role)
+      .is('used_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (resetError) throw new HttpError(500, resetError.message);
+    const resetRow = resetRows?.[0];
+    if (!resetRow || new Date(resetRow.expires_at).getTime() < Date.now()) {
+      throw new HttpError(400, 'Código inválido ou expirado.');
+    }
+
+    if (Number(resetRow.attempts || 0) >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      await supabase.from('password_reset_codes').update({ used_at: nowIso(), updated_at: nowIso() }).eq('id', resetRow.id);
+      throw new HttpError(429, 'Muitas tentativas. Peça um novo código.');
+    }
+
+    const codeOk = bcrypt.compareSync(String(codeInput), String(resetRow.code_hash));
+    if (!codeOk) {
+      const nextAttempts = Number(resetRow.attempts || 0) + 1;
+      const payload: AnyRecord = { attempts: nextAttempts, updated_at: nowIso() };
+      if (nextAttempts >= PASSWORD_RESET_MAX_ATTEMPTS) payload.used_at = nowIso();
+      await supabase.from('password_reset_codes').update(payload).eq('id', resetRow.id);
+      throw new HttpError(401, nextAttempts >= PASSWORD_RESET_MAX_ATTEMPTS ? 'Muitas tentativas. Peça um novo código.' : 'Código inválido ou expirado.');
+    }
+
+    await updateRow('users', row.id, { password: bcrypt.hashSync(String(body.newPassword), 12) });
+    await supabase.from('password_reset_codes').update({ used_at: nowIso(), updated_at: nowIso() }).eq('id', resetRow.id);
+    return json({ message: 'Password actualizada com sucesso. Já pode iniciar sessão.' });
   }
 
   if (path === '/api/auth/me' && method === 'GET') {
