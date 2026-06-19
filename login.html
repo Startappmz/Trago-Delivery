@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="global.css">
     <link rel="stylesheet" href="login.css">
     <link rel="stylesheet" href="trago-system.css">
+    <link rel="stylesheet" href="trago-final-fixes.css">
 </head>
 <body class="login-body">
     <!-- Animated Background -->
@@ -55,6 +56,11 @@
                     <span>Entrar no Sistema</span>
                     <i class="fas fa-arrow-right"></i>
                 </button>
+
+                <button type="button" class="login-secondary-action btn-open-password-reset" data-reset-role="admin">
+                    <i class="fas fa-unlock-keyhole"></i>
+                    <span>Restaurar password</span>
+                </button>
             </form>
 
             <div class="divider">
@@ -64,6 +70,43 @@
             <p class="login-footer">
                 © 2026 Trago Delivery - Sistema de Gestão de Entregas
             </p>
+        </div>
+    </div>
+
+
+    <!-- Password Reset Modal -->
+    <div id="password-reset-modal" class="modal-backdrop hidden">
+        <div class="modal-content modal-alert password-reset-modal-content">
+            <div class="modal-header">
+                <h3>Restaurar password do admin</h3>
+                <button type="button" class="modal-close-btn" onclick="closePasswordResetModal()">×</button>
+            </div>
+            <form id="password-reset-form" class="modal-body">
+                <input type="hidden" id="reset-role" value="admin">
+                <p id="reset-instructions" class="reset-password-hint">Introduza o email da conta. Enviaremos um código temporário para esse email.</p>
+                <div class="form-group">
+                    <label class="form-label" for="reset-email">Email</label>
+                    <input type="email" id="reset-email" class="form-input" placeholder="Email da conta" required>
+                </div>
+                <div class="modal-actions reset-request-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closePasswordResetModal()">Cancelar</button>
+                    <button type="button" id="reset-request-code-btn" class="btn btn-primary">Enviar código</button>
+                </div>
+                <div id="reset-confirm-section" class="reset-confirm-section hidden">
+                    <div class="form-group">
+                        <label class="form-label" for="reset-code">Código recebido por email</label>
+                        <input type="text" id="reset-code" class="form-input" placeholder="Ex.: 482913" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="reset-new-password">Nova password</label>
+                        <input type="password" id="reset-new-password" class="form-input" placeholder="Mínimo 8 caracteres" minlength="8">
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closePasswordResetModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Actualizar password</button>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 

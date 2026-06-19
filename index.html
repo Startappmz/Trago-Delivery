@@ -33,6 +33,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <link rel="stylesheet" href="trago-final-fixes.css">
 </head>
 <body class="dashboard-body">
     <!-- Animated Background -->
@@ -1057,9 +1058,16 @@
                         <div id="zona-de-perigo">
                             <p>Ações administrativas perigosas. Estas ações são irreversíveis.</p>
                             
-                            <button class="btn btn-danger" id="btn-delete-old-history">
-                                <i class="fas fa-trash"></i> Apagar Histórico Antigo
-                            </button>
+                            <div class="danger-menu-row">
+                                <div class="actions-menu">
+                                    <button type="button" class="action-menu-toggle" aria-label="Mais opções"><i class="fas fa-ellipsis-v"></i></button>
+                                    <div class="action-menu-panel" role="menu">
+                                        <button type="button" class="action-menu-item danger" id="btn-delete-old-history" role="menuitem">
+                                            <i class="fas fa-trash"></i><span>Eliminar histórico antigo</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <small class="inline-note">Apaga todas as encomendas concluídas com mais de 30 dias.</small>
                             
                             <button class="btn btn-danger section-spaced" disabled>
