@@ -2573,9 +2573,9 @@
     #mapa-tempo-real #live-map-container,
     .dashboard-body .live-map-card-enhanced #live-map-container,
     .dashboard-body #live-map-container {
-        height: clamp(156px, 27dvh, 198px) !important;
-        min-height: 156px !important;
-        max-height: 198px !important;
+        height: clamp(210px, 38dvh, 290px) !important;
+        min-height: 210px !important;
+        max-height: 290px !important;
         width: 100% !important;
         flex: 0 0 auto !important;
     }
