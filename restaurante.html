@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-mz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurante - Trago Delivery</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link rel="stylesheet" href="global.css">
+  <link rel="stylesheet" href="trago-system.css">
+  <link rel="stylesheet" href="customer-restaurant.css">
+</head>
+<body class="portal-body">
+  <header class="portal-topbar">
+    <div class="portal-topbar-inner">
+      <a href="restaurante.html" class="portal-brand">
+        <img src="assets/logo.svg" alt="Trago Delivery">
+        <span class="portal-brand-text"><strong id="restaurant-name-label">Restaurante</strong><span>Portal do Restaurante</span></span>
+      </a>
+      <nav class="portal-nav">
+        <a class="portal-link" href="cliente.html"><i class="fas fa-mobile-screen"></i> Ver como cliente</a>
+        <a class="portal-link" href="login.html"><i class="fas fa-user-shield"></i> Admin</a>
+        <button type="button" class="portal-btn ghost" id="btn-restaurant-logout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="portal-shell">
+    <section class="portal-hero compact">
+      <div>
+        <h1>Menu vivo, pedidos controlados.</h1>
+        <p>Publique comidas por categoria. O cliente vê cada restaurante separado e todo pedido entra no dashboard operacional da Trago.</p>
+      </div>
+    </section>
+
+    <section class="metric-row" style="margin-bottom:16px">
+      <div class="metric-card"><small>Comidas no menu</small><strong id="metric-menu-items">0</strong></div>
+      <div class="metric-card"><small>Pedidos recebidos</small><strong id="metric-orders">0</strong></div>
+      <div class="metric-card"><small>Valor dos pedidos</small><strong id="metric-revenue">0,00 MT</strong></div>
+    </section>
+
+    <div class="portal-tabs" role="tablist">
+      <button type="button" class="portal-tab active" data-panel="menu"><i class="fas fa-utensils"></i> Menu</button>
+      <button type="button" class="portal-tab" data-panel="orders"><i class="fas fa-receipt"></i> Pedidos</button>
+      <button type="button" class="portal-tab" data-panel="profile"><i class="fas fa-store"></i> Perfil</button>
+    </div>
+
+    <section class="portal-panel" data-panel="menu">
+      <div class="portal-grid restaurant-grid">
+        <aside class="portal-card">
+          <div class="card-title-row"><div><h2>Adicionar comida</h2><p>Separe o menu por categorias: Frango, Burgers, Bebidas, Pratos do dia...</p></div></div>
+          <form id="menu-form" class="form-stack">
+            <input type="hidden" id="menu-item-id">
+            <div class="portal-field"><label for="menu-name">Nome da comida</label><input id="menu-name" required placeholder="Ex: 10 Asas Zinger"></div>
+            <div class="form-row-2">
+              <div class="portal-field"><label for="menu-category">Categoria</label><input id="menu-category" list="menu-category-list" required placeholder="Ex: Frango"><datalist id="menu-category-list"><option value="Frango"><option value="Burgers"><option value="Pizza"><option value="Bebidas"><option value="Pratos do dia"><option value="Sobremesas"></datalist></div>
+              <div class="portal-field"><label for="menu-price">Preço (MZN)</label><input id="menu-price" type="number" min="0" step="0.01" required></div>
+            </div>
+            <div class="form-row-2">
+              <div class="portal-field"><label for="menu-image">URL da imagem</label><input id="menu-image" type="url" placeholder="https://..."></div>
+              <div class="portal-field"><label for="menu-prep-time">Tempo prep. (min)</label><input id="menu-prep-time" type="number" min="0" placeholder="30"></div>
+            </div>
+            <div class="portal-field"><label for="menu-description">Descrição</label><textarea id="menu-description" placeholder="Ingredientes, tamanho, observações..."></textarea></div>
+            <label class="checkbox-label"><input type="checkbox" id="menu-available" checked><span>Disponível para venda</span></label>
+            <div class="portal-actions">
+              <button type="submit" class="portal-btn primary"><i class="fas fa-utensils"></i> <span id="menu-submit-label">Adicionar comida</span></button>
+              <button type="button" class="portal-btn secondary hidden" id="btn-cancel-menu-edit">Cancelar edição</button>
+            </div>
+          </form>
+        </aside>
+        <div class="portal-card">
+          <div class="card-title-row"><div><h2>Menu publicado</h2><p>Organizado automaticamente por categoria.</p></div></div>
+          <div id="restaurant-menu-list" class="menu-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="portal-panel hidden" data-panel="orders">
+      <div class="portal-card">
+        <div class="card-title-row">
+          <div><h2>Pedidos de comida</h2><p>Pedidos criados no cliente.html que usam este restaurante como ponto de recolha.</p></div>
+          <button type="button" class="portal-btn secondary" id="btn-refresh-orders"><i class="fas fa-rotate"></i> Actualizar</button>
+        </div>
+        <div id="restaurant-orders-list" class="menu-list"></div>
+      </div>
+    </section>
+
+    <section class="portal-panel hidden" data-panel="profile">
+      <div class="portal-card">
+        <div class="card-title-row"><div><h2>Perfil público</h2><p>Dados usados na página do cliente e no ponto de recolha dos pedidos.</p></div></div>
+        <form id="restaurant-profile-form" class="form-stack">
+          <div class="form-row-2">
+            <div class="portal-field"><label for="profile-name">Nome do restaurante</label><input id="profile-name" required></div>
+            <div class="portal-field"><label for="profile-phone">Telefone</label><input id="profile-phone" required></div>
+          </div>
+          <div class="portal-field"><label for="profile-address">Endereço</label><input id="profile-address" placeholder="Morada de recolha"></div>
+          <div class="form-row-2">
+            <div class="portal-field"><label for="profile-logo">URL do logotipo</label><input id="profile-logo" type="url" placeholder="https://..."></div>
+            <div class="portal-field"><label for="profile-cover">URL de capa</label><input id="profile-cover" type="url" placeholder="https://..."></div>
+          </div>
+          <button type="submit" class="portal-btn primary"><i class="fas fa-save"></i> Guardar perfil</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-bottom-nav" aria-label="Navegação do restaurante">
+    <button type="button" class="active" data-panel="menu"><i class="fas fa-utensils"></i><span>Menu</span></button>
+    <button type="button" data-panel="orders"><i class="fas fa-receipt"></i><span>Pedidos</span></button>
+    <button type="button" data-panel="profile"><i class="fas fa-store"></i><span>Perfil</span></button>
+  </nav>
+
+  <div id="portal-toast" class="portal-toast"></div>
+  <script src="js/common/supabaseConfig.js"></script>
+  <script src="js/common/api.js"></script>
+  <script src="js/restaurant/restaurant.js"></script>
+</body>
+</html>
