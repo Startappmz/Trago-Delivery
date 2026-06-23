@@ -73,6 +73,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '1
 app.use('/api', rateLimiter);
 
 // Rotas da API
+app.use('/api', require('./routes/publicPortalRoutes')); // portais cliente/restaurante
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/drivers', require('./routes/driverRoutes'));

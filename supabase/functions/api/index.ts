@@ -411,6 +411,36 @@ const fromVehicle = (row: AnyRecord) => row ? ({
   updatedAt: row.updated_at
 }) : null;
 
+const fromRestaurant = (row: AnyRecord) => row ? ({
+  _id: row.id,
+  id: row.id,
+  name: row.name || '',
+  email: row.email || '',
+  phone: row.phone || '',
+  address_text: row.address_text || '',
+  address_coords: row.address_coords || null,
+  logo_url: row.logo_url || '',
+  cover_url: row.cover_url || '',
+  status: row.status || 'active',
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+}) : null;
+
+const fromMenuItem = (row: AnyRecord) => row ? ({
+  _id: row.id,
+  id: row.id,
+  restaurant_id: row.restaurant_id,
+  name: row.name || '',
+  category: row.category || 'Geral',
+  description: row.description || '',
+  price: Number(row.price || 0),
+  image_url: row.image_url || '',
+  available: row.available !== false,
+  prep_time_min: row.prep_time_min || null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+}) : null;
+
 const fromTrip = (row: AnyRecord) => row ? ({
   _id: row.id,
   id: row.id,
@@ -491,6 +521,34 @@ const countRows = async (table: string, mutator?: (q: any) => any) => {
 };
 
 const getDriverProfileByUser = async (userId: string) => selectOne('driver_profiles', 'user_id', userId);
+
+const generateRestaurantToken = async (restaurant: AnyRecord) => {
+  const key = await makeJwtKey();
+  return create(
+    { alg: 'HS256', typ: 'JWT' },
+    {
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.name,
+        email: restaurant.email
+      },
+      scope: 'restaurant',
+      exp: getNumericDate(JWT_DAYS * 24 * 60 * 60)
+    },
+    key
+  );
+};
+
+const requireRestaurant = async (req: Request) => {
+  const token = readToken(req);
+  if (!token) throw new HttpError(401, 'Sessão do restaurante em falta.');
+  const decoded = await verifyToken(token);
+  const restaurantId = decoded?.restaurant?.id;
+  if (!restaurantId || !isValidId(restaurantId)) throw new HttpError(401, 'Sessão do restaurante inválida ou expirada.');
+  const restaurant = await selectOne('restaurants', 'id', restaurantId);
+  if (!restaurant || restaurant.status !== 'active') throw new HttpError(401, 'Restaurante inexistente ou inactivo.');
+  return restaurant;
+};
 
 const enrichDriverUser = async (userRow: AnyRecord) => {
   const user = fromUser(userRow);
@@ -1503,6 +1561,234 @@ const routeGeo = async (req: Request, path: string, method: string) => {
   return null;
 };
 
+
+const routePublicPortals = async (req: Request, path: string, method: string) => {
+  if (path === '/api/public/restaurants' && method === 'GET') {
+    const { data: restaurants, error: restaurantError } = await supabase
+      .from('restaurants')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+    if (restaurantError) throw new HttpError(500, restaurantError.message);
+
+    const { data: menuItems, error: menuError } = await supabase
+      .from('restaurant_menu_items')
+      .select('*')
+      .eq('available', true)
+      .order('category', { ascending: true })
+      .order('name', { ascending: true });
+    if (menuError) throw new HttpError(500, menuError.message);
+
+    const payload = (restaurants || []).map((restaurant: AnyRecord) => {
+      const safeRestaurant = fromRestaurant(restaurant) as AnyRecord;
+      delete safeRestaurant.email;
+      return {
+        ...safeRestaurant,
+        menuItems: (menuItems || [])
+          .filter((item: AnyRecord) => item.restaurant_id === restaurant.id)
+          .map(fromMenuItem)
+      };
+    }).filter((restaurant: AnyRecord) => (restaurant.menuItems || []).length > 0);
+
+    return json({ restaurants: payload });
+  }
+
+  if (path === '/api/public/restaurants/register' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['name', 'email', 'phone', 'password']);
+    if (String(body.password || '').length < 6) throw new HttpError(400, 'A password deve ter pelo menos 6 caracteres.');
+    const email = lowerEmail(body.email);
+    const existing = await selectOne('restaurants', 'email', email);
+    if (existing) throw new HttpError(400, 'Já existe um restaurante com este email.');
+    const restaurant = await insertRow('restaurants', {
+      name: clean(body.name),
+      email,
+      phone: clean(body.phone),
+      password_hash: bcrypt.hashSync(String(body.password), 12),
+      address_text: clean(body.address_text) || '',
+      address_coords: body.address_coords || null,
+      logo_url: clean(body.logo_url) || '',
+      cover_url: clean(body.cover_url) || '',
+      status: 'active'
+    });
+    return json({ restaurant: fromRestaurant(restaurant), token: await generateRestaurantToken(restaurant) }, 201);
+  }
+
+  if (path === '/api/public/restaurants/login' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['email', 'password']);
+    const restaurant = await selectOne('restaurants', 'email', lowerEmail(body.email));
+    if (!restaurant || restaurant.status !== 'active' || !bcrypt.compareSync(String(body.password), String(restaurant.password_hash || ''))) {
+      throw new HttpError(401, 'Credenciais inválidas.');
+    }
+    return json({ restaurant: fromRestaurant(restaurant), token: await generateRestaurantToken(restaurant) });
+  }
+
+  if (path === '/api/public/orders' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['service_type', 'client_name', 'client_phone1', 'price']);
+
+    const coordinates = normalizeCoordinates(body.lat, body.lng);
+    const pickupCoordinates = normalizeCoordinates(body.pickup_lat, body.pickup_lng);
+    const baseServicePrice = toNumber(body.service_price ?? body.price, 0);
+    let routeQuote: AnyRecord = {
+      distance_km: toNumber(body.route_distance_km, 0),
+      duration_min: toNumber(body.route_duration_min, 0) || null,
+      delivery_fee: toNumber(body.delivery_fee, 0),
+      source: 'frontend_public'
+    };
+    if (pickupCoordinates && coordinates) routeQuote = await buildRouteQuote(pickupCoordinates, coordinates);
+
+    const rawPayment = String(body.payment_method || '').trim();
+    const paymentMethod = ALLOWED_PAYMENT_METHODS.has(rawPayment) && rawPayment !== 'postpaid_credit' ? rawPayment : 'cash';
+    const totalOrderPrice = baseServicePrice + toNumber(routeQuote.delivery_fee, 0);
+
+    const orderRow = await insertRow('orders', {
+      service_type: clean(body.service_type),
+      price: toNumber(totalOrderPrice, 0),
+      service_price: baseServicePrice,
+      delivery_fee: toNumber(routeQuote.delivery_fee, 0),
+      route_distance_km: toNumber(routeQuote.distance_km, 0),
+      route_duration_min: routeQuote.duration_min || null,
+      route_pricing_source: routeQuote.source || 'fallback_public',
+      client_name: clean(body.client_name),
+      client_phone1: clean(body.client_phone1),
+      client_phone2: clean(body.client_phone2) || '',
+      pickup_address_text: clean(body.pickup_address_text) || '',
+      pickup_address_coords: pickupCoordinates,
+      pickup_contact_name: clean(body.pickup_contact_name) || '',
+      pickup_contact_phone: clean(body.pickup_contact_phone) || '',
+      pickup_notes: clean(body.pickup_notes) || '',
+      address_text: clean(body.address_text) || '',
+      address_coords: coordinates,
+      image_url: clean(body.image_url) || null,
+      verification_code: generateVerificationCode(),
+      created_by_admin: null,
+      assigned_to_driver: null,
+      client: null,
+      status: ORDER_STATUS.PENDING,
+      payment_method: paymentMethod,
+      payment_status: PAYMENT_STATUS.UNPAID
+    });
+
+    await createAdminNotification({
+      dedupeKey: `new_order:${orderRow.id}`,
+      type: 'order',
+      title: body.public_source === 'client_food' ? 'Novo pedido de comida' : 'Novo pedido do cliente',
+      message: `Pedido ${shortOrderCode(orderRow.id)} · ${orderRow.client_name || 'Cliente'} · ${paymentMethodLabel(orderRow.payment_method)}.`,
+      order: orderRow,
+      payload: {
+        clientName: orderRow.client_name,
+        amount: Number(orderRow.price || 0),
+        paymentMethod: orderRow.payment_method,
+        publicSource: body.public_source || 'client',
+        restaurantId: body.restaurant_id || null,
+        foodItems: body.food_items || []
+      },
+      createdAt: orderRow.created_at || nowIso()
+    });
+    await broadcastAdmin('order_pending', { orderId: orderRow.id, clientName: orderRow.client_name, source: body.public_source || 'client' });
+    await broadcastAdmin('orders_changed', { orderId: orderRow.id, action: 'created' });
+    return json({ message: 'Pedido criado com sucesso.', order: fromOrder(orderRow) }, 201);
+  }
+
+  if (path === '/api/restaurant/profile' && method === 'GET') {
+    const restaurant = await requireRestaurant(req);
+    return json({ restaurant: fromRestaurant(restaurant) });
+  }
+
+  if (path === '/api/restaurant/profile' && method === 'PUT') {
+    const restaurant = await requireRestaurant(req);
+    const body = await readBody(req) as AnyRecord;
+    const updated = await updateRow('restaurants', restaurant.id, {
+      name: clean(body.name) || restaurant.name,
+      phone: clean(body.phone) || restaurant.phone || '',
+      address_text: clean(body.address_text) || '',
+      address_coords: body.address_coords || restaurant.address_coords || null,
+      logo_url: clean(body.logo_url) || '',
+      cover_url: clean(body.cover_url) || ''
+    });
+    return json({ restaurant: fromRestaurant(updated) });
+  }
+
+  if (path === '/api/restaurant/menu' && method === 'GET') {
+    const restaurant = await requireRestaurant(req);
+    const { data, error } = await supabase
+      .from('restaurant_menu_items')
+      .select('*')
+      .eq('restaurant_id', restaurant.id)
+      .order('category', { ascending: true })
+      .order('name', { ascending: true });
+    if (error) throw new HttpError(500, error.message);
+    return json({ items: (data || []).map(fromMenuItem) });
+  }
+
+  if (path === '/api/restaurant/menu' && method === 'POST') {
+    const restaurant = await requireRestaurant(req);
+    const body = await readBody(req) as AnyRecord;
+    requiredFields(body, ['name', 'category', 'price']);
+    if (toNumber(body.price, 0) <= 0) throw new HttpError(400, 'O preço deve ser maior que zero.');
+    const item = await insertRow('restaurant_menu_items', {
+      restaurant_id: restaurant.id,
+      name: clean(body.name),
+      category: clean(body.category) || 'Geral',
+      description: clean(body.description) || '',
+      price: toNumber(body.price, 0),
+      image_url: clean(body.image_url) || '',
+      available: body.available !== false,
+      prep_time_min: body.prep_time_min ? toNumber(body.prep_time_min, 0) : null
+    });
+    return json({ item: fromMenuItem(item) }, 201);
+  }
+
+  const menuItemMatch = path.match(/^\/api\/restaurant\/menu\/([a-f0-9]{24})$/i);
+  if (menuItemMatch && method === 'PUT') {
+    const restaurant = await requireRestaurant(req);
+    const current = await selectOne('restaurant_menu_items', 'id', menuItemMatch[1]);
+    if (!current || current.restaurant_id !== restaurant.id) throw new HttpError(404, 'Comida não encontrada neste restaurante.');
+    const body = await readBody(req) as AnyRecord;
+    const updated = await updateRow('restaurant_menu_items', current.id, {
+      name: clean(body.name) || current.name,
+      category: clean(body.category) || current.category || 'Geral',
+      description: clean(body.description) || '',
+      price: toNumber(body.price, current.price || 0),
+      image_url: clean(body.image_url) || '',
+      available: body.available !== false,
+      prep_time_min: body.prep_time_min ? toNumber(body.prep_time_min, 0) : null
+    });
+    return json({ item: fromMenuItem(updated) });
+  }
+
+  if (menuItemMatch && method === 'DELETE') {
+    const restaurant = await requireRestaurant(req);
+    const current = await selectOne('restaurant_menu_items', 'id', menuItemMatch[1]);
+    if (!current || current.restaurant_id !== restaurant.id) throw new HttpError(404, 'Comida não encontrada neste restaurante.');
+    await deleteRow('restaurant_menu_items', current.id);
+    return json({ message: 'Comida eliminada com sucesso.' });
+  }
+
+  if (path === '/api/restaurant/orders' && method === 'GET') {
+    const restaurant = await requireRestaurant(req);
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('service_type', 'restaurante_comida')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) throw new HttpError(500, error.message);
+    const restaurantPhone = String(restaurant.phone || '').replace(/\D/g, '');
+    const orders = (data || []).filter((order: AnyRecord) => {
+      const orderPhone = String(order.pickup_contact_phone || '').replace(/\D/g, '');
+      const samePhone = restaurantPhone && orderPhone && restaurantPhone === orderPhone;
+      const sameName = String(order.pickup_contact_name || '').trim().toLowerCase() === String(restaurant.name || '').trim().toLowerCase();
+      return samePhone || sameName;
+    }).map(fromOrder);
+    return json({ orders });
+  }
+
+  return null;
+};
+
 const routeOrders = async (req: Request, path: string, method: string) => {
   if (path === '/api/orders' && method === 'POST') {
     const user = await requireUser(req, 'admin');
@@ -2219,7 +2505,7 @@ Deno.serve(async (req) => {
   try {
     if (path === '/health') return json({ status: 'ok', runtime: 'supabase-edge-functions', storageBucket: STORAGE_BUCKET });
 
-    const handlers = [routeAuth, routeRealtime, routeGeo, routeDrivers, routeClients, routeVehicles, routeOrders, routeNotifications, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
+    const handlers = [routeAuth, routeRealtime, routeGeo, routePublicPortals, routeDrivers, routeClients, routeVehicles, routeOrders, routeNotifications, routeStats, routeSimpleFinancials, routeAdmin, routeTrips];
     for (const handler of handlers) {
       const response = await handler(req, path, method);
       if (response) return response;
