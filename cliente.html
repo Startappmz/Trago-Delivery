@@ -22,8 +22,6 @@
         <span class="portal-brand-text"><strong>Trago Delivery</strong><span>Portal do Cliente</span></span>
       </a>
       <nav class="portal-nav">
-        <a class="portal-link" href="login-restaurante.html"><i class="fas fa-store"></i> Restaurantes</a>
-        <a class="portal-link" href="login.html"><i class="fas fa-user-shield"></i> Admin</a>
         <button type="button" class="portal-btn secondary desktop-cart-btn" id="btn-open-cart-desktop"><i class="fas fa-cart-shopping"></i> Carrinho <span id="cart-count-desktop" class="cart-count-badge">0</span></button>
         <button type="button" class="portal-btn ghost" id="btn-client-logout"><i class="fas fa-sign-out-alt"></i> Sair</button>
       </nav>
@@ -98,6 +96,18 @@
       </div>
     </section>
 
+
+    <section class="portal-panel hidden" data-panel="dish-detail">
+      <div class="portal-card dish-detail-card">
+        <div class="card-title-row">
+          <div>
+            <button type="button" class="portal-btn secondary compact-back-btn" data-jump-panel="food"><i class="fas fa-arrow-left"></i> Voltar às comidas</button>
+          </div>
+        </div>
+        <div id="dish-detail-content" class="dish-detail-content"></div>
+      </div>
+    </section>
+
     <section class="portal-panel hidden" data-panel="delivery">
       <div class="portal-card">
         <div class="card-title-row">
@@ -137,13 +147,15 @@
             </div>
           </div>
           <div class="form-row-2">
-            <div class="portal-field">
+            <div class="portal-field address-field">
               <label for="order-pickup-address">Ponto de recolha</label>
-              <input type="text" id="order-pickup-address" placeholder="Restaurante, loja, armazém ou morada" required>
+              <input type="text" id="order-pickup-address" autocomplete="off" placeholder="Restaurante, loja, armazém ou morada" required>
+              <div class="address-suggestions" data-suggestions-for="order-pickup-address"></div>
             </div>
-            <div class="portal-field">
+            <div class="portal-field address-field">
               <label for="order-delivery-address">Ponto de entrega</label>
-              <input type="text" id="order-delivery-address" placeholder="Morada final" required>
+              <input type="text" id="order-delivery-address" autocomplete="off" placeholder="Morada final" required>
+              <div class="address-suggestions" data-suggestions-for="order-delivery-address"></div>
             </div>
           </div>
           <div class="form-row-2">
@@ -257,7 +269,7 @@
           <div class="portal-field"><label for="food-client-phone">Contacto</label><input id="food-client-phone" required></div>
         </div>
         <div class="portal-field"><label for="food-client-phone2">Contacto alternativo</label><input id="food-client-phone2"></div>
-        <div class="portal-field"><label for="food-delivery-address">Endereço de entrega</label><input id="food-delivery-address" required placeholder="Ex: Bairro, rua, referência"></div>
+        <div class="portal-field address-field"><label for="food-delivery-address">Endereço de entrega</label><input id="food-delivery-address" required autocomplete="off" placeholder="Ex: Bairro, rua, referência"><div class="address-suggestions" data-suggestions-for="food-delivery-address"></div></div>
         <input type="hidden" id="food-delivery-lat"><input type="hidden" id="food-delivery-lng">
         <div class="portal-actions compact-actions">
           <button type="button" class="portal-btn secondary" data-jump-panel="map"><i class="fas fa-map-pin"></i> Marcar entrega no mapa</button>
@@ -268,6 +280,23 @@
         <button type="submit" class="portal-btn primary checkout-btn"><i class="fas fa-bag-shopping"></i> Finalizar pedido de comida</button>
       </form>
     </aside>
+  </div>
+
+
+
+  <div id="driver-radar-modal" class="radar-modal" aria-hidden="true">
+    <div class="radar-backdrop"></div>
+    <div class="radar-box" role="dialog" aria-modal="true" aria-labelledby="radar-title">
+      <div class="radar-visual">
+        <span class="radar-pulse radar-pulse-a"></span>
+        <span class="radar-pulse radar-pulse-b"></span>
+        <i class="fas fa-motorcycle"></i>
+      </div>
+      <h3 id="radar-title">A procurar motorista livre</h3>
+      <p id="radar-message">Vamos procurar motoristas online e livres num raio de 5 km.</p>
+      <div class="radar-progress"><span id="radar-progress-bar"></span></div>
+      <small id="radar-status">Preparando radar...</small>
+    </div>
   </div>
 
   <nav class="mobile-bottom-nav customer-bottom-nav" aria-label="Navegação do cliente">

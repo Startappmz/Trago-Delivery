@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login Cliente - Trago Delivery</title>
+  <title>Acesso Cliente - Trago Delivery</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,11 +20,23 @@
   <div class="orb orb-2"></div>
   <div class="orb orb-3"></div>
 
-  <div class="login-card portal-login">
+  <div class="login-card portal-login client-login-card">
     <div class="login-header">
       <img src="assets/logo.svg" alt="Trago Delivery" class="login-logo">
       <h1 class="login-title">Portal do Cliente</h1>
-      <p class="login-subtitle">Crie entregas e peça comida dos restaurantes parceiros.</p>
+      <p class="login-subtitle">Entre como convidado, registe-se opcionalmente ou use a sua conta Google.</p>
+    </div>
+
+    <div class="google-auth-zone">
+      <div id="google-signin-button" class="google-signin-button" aria-label="Entrar com Google"></div>
+      <p id="google-auth-help" class="google-auth-help">Login Google opcional. O cliente continua a poder pedir sem cadastro.</p>
+    </div>
+
+    <div class="divider"><span>ou</span></div>
+
+    <div class="login-mode-switch client-mode-switch" role="tablist" aria-label="Tipo de acesso do cliente">
+      <button type="button" class="active" data-client-mode="guest">Convidado</button>
+      <button type="button" data-client-mode="register">Registar</button>
     </div>
 
     <form id="client-login-form" class="form-stack">
@@ -37,34 +49,66 @@
         <input type="tel" id="client-phone" placeholder="Ex: 84 000 0000" required minlength="9">
       </div>
       <div class="portal-field">
-        <label for="client-email">Email <span style="color:#7c8679;font-weight:600">(opcional)</span></label>
+        <label for="client-email">Email <span id="client-email-mode-label" style="color:#7c8679;font-weight:600">(opcional)</span></label>
         <input type="email" id="client-email" placeholder="cliente@email.com">
       </div>
+      <small class="portal-help" id="client-login-help">Modo convidado: cria sessão apenas neste dispositivo, sem cadastro obrigatório.</small>
       <button type="submit" class="btn-login">
-        <span>Entrar no Portal</span>
+        <span id="client-submit-label">Continuar como convidado</span>
         <i class="fas fa-arrow-right"></i>
       </button>
     </form>
-
-    <div class="divider"><span>Acesso rápido do cliente</span></div>
-    <p class="login-footer">Restaurante parceiro? <a href="login-restaurante.html">Entrar no portal do restaurante</a></p>
   </div>
 
+  <script src="js/common/supabaseConfig.js"></script>
+  <script src="js/common/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const existing = localStorage.getItem('tragoClientSession');
+      const SESSION_KEY = 'tragoClientSession';
+      let mode = 'guest';
+      const existing = localStorage.getItem(SESSION_KEY);
       if (existing) {
         try {
           const session = JSON.parse(existing);
-          if (session?.name && session?.phone) {
+          if (session?.name) {
             document.getElementById('client-name').value = session.name || '';
             document.getElementById('client-phone').value = session.phone || '';
             document.getElementById('client-email').value = session.email || '';
           }
         } catch (_) {}
       }
-      document.getElementById('client-login-form').addEventListener('submit', (event) => {
+
+      function saveSession(session) {
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+          id: session.id || `client_${String(session.phone || session.email || Date.now()).replace(/\W/g, '')}_${Date.now()}`,
+          name: session.name || 'Cliente',
+          phone: session.phone || '',
+          email: session.email || '',
+          avatar_url: session.avatar_url || '',
+          registered: Boolean(session.registered),
+          auth_provider: session.auth_provider || (session.registered ? 'local' : 'guest'),
+          createdAt: session.createdAt || new Date().toISOString()
+        }));
+        window.location.replace('cliente.html');
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        document.querySelectorAll('[data-client-mode]').forEach((btn) => btn.classList.toggle('active', btn.dataset.clientMode === mode));
+        document.getElementById('client-submit-label').textContent = mode === 'register' ? 'Criar cadastro e entrar' : 'Continuar como convidado';
+        document.getElementById('client-login-help').textContent = mode === 'register'
+          ? 'Cadastro opcional: guarda o cliente na base de dados para facilitar próximos pedidos.'
+          : 'Modo convidado: cria sessão apenas neste dispositivo, sem cadastro obrigatório.';
+        document.getElementById('client-email-mode-label').textContent = mode === 'register' ? '(obrigatório)' : '(opcional)';
+        document.getElementById('client-email').required = mode === 'register';
+      }
+
+      document.querySelectorAll('[data-client-mode]').forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.clientMode)));
+
+      document.getElementById('client-login-form').addEventListener('submit', async (event) => {
         event.preventDefault();
+        const button = event.target.querySelector('button[type="submit"]');
         const name = document.getElementById('client-name').value.trim();
         const phone = document.getElementById('client-phone').value.trim();
         const email = document.getElementById('client-email').value.trim();
@@ -72,15 +116,99 @@
           alert('Preencha nome e contacto válido.');
           return;
         }
-        localStorage.setItem('tragoClientSession', JSON.stringify({
-          id: `client_${phone.replace(/\D/g, '')}_${Date.now()}`,
-          name,
-          phone,
-          email,
-          createdAt: new Date().toISOString()
-        }));
-        window.location.replace('cliente.html');
+        if (mode === 'register' && !email) {
+          alert('Para registar o cliente, indique o email.');
+          return;
+        }
+        if (mode === 'guest') {
+          saveSession({ name, phone, email, registered: false, auth_provider: 'guest' });
+          return;
+        }
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A criar cadastro...';
+        try {
+          const response = await fetch(`${API_URL}/api/public/clients/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, email })
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.message || 'Não foi possível registar o cliente.');
+          saveSession({
+            id: data.client?.id || data.client?._id,
+            name: data.client?.nome || name,
+            phone: data.client?.telefone || phone,
+            email: data.client?.email || email,
+            registered: true,
+            auth_provider: 'local'
+          });
+        } catch (error) {
+          alert(error.message);
+        } finally {
+          button.disabled = false;
+          button.innerHTML = `<span id="client-submit-label">${mode === 'register' ? 'Criar cadastro e entrar' : 'Continuar como convidado'}</span><i class="fas fa-arrow-right"></i>`;
+        }
       });
+
+      window.handleTragoGoogleCredential = async (response) => {
+        const help = document.getElementById('google-auth-help');
+        try {
+          help.textContent = 'A validar conta Google...';
+          const apiResponse = await fetch(`${API_URL}/api/public/clients/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token: response.credential })
+          });
+          const data = await apiResponse.json().catch(() => ({}));
+          if (!apiResponse.ok) throw new Error(data.message || 'Não foi possível validar a conta Google.');
+          saveSession({
+            id: data.client?.id || data.client?._id,
+            name: data.client?.nome || data.google?.name || 'Cliente Google',
+            phone: data.client?.telefone || '',
+            email: data.client?.email || data.google?.email || '',
+            avatar_url: data.google?.picture || '',
+            registered: true,
+            auth_provider: 'google'
+          });
+        } catch (error) {
+          help.textContent = error.message;
+          help.classList.add('error');
+        }
+      };
+
+      function initGoogleButton() {
+        const help = document.getElementById('google-auth-help');
+        const holder = document.getElementById('google-signin-button');
+        const clientId = window.TRAGO_GOOGLE_CLIENT_ID || '';
+        if (!clientId) {
+          holder.innerHTML = '<button type="button" class="google-placeholder" disabled><span class="google-g">G</span><span>Entrar com Google</span></button>';
+          help.textContent = 'Para activar este botão, configure window.TRAGO_GOOGLE_CLIENT_ID no js/common/supabaseConfig.js e GOOGLE_CLIENT_ID no backend.';
+          return;
+        }
+        if (!window.google?.accounts?.id) {
+          setTimeout(initGoogleButton, 250);
+          return;
+        }
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: window.handleTragoGoogleCredential,
+          ux_mode: 'popup'
+        });
+        window.google.accounts.id.renderButton(holder, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'pill',
+          logo_alignment: 'left',
+          width: Math.min(360, holder.clientWidth || 360)
+        });
+        help.textContent = 'Cadastro/entrada Google opcional. Contacto pode ser preenchido depois no pedido.';
+      }
+
+      setMode(mode);
+      window.addEventListener('load', initGoogleButton);
+      setTimeout(initGoogleButton, 600);
     });
   </script>
 </body>
