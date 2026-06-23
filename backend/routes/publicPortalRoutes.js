@@ -6,9 +6,13 @@ const router = express.Router();
 router.get('/public/restaurants', controller.listPublicRestaurants);
 router.post('/public/geo/quote', controller.createPublicRouteQuote);
 router.post('/public/ratings', controller.createPublicRating);
+router.post('/public/clients/register', controller.registerPublicClient);
+router.post('/public/clients/google', controller.googleClientAuth);
+router.get('/public/geo/search', controller.searchPublicAddresses);
 router.post('/public/restaurants/register', controller.registerRestaurant);
 router.post('/public/restaurants/login', controller.loginRestaurant);
 router.post('/public/orders', controller.createPublicOrder);
+router.post('/public/orders/:id/radar-assign', controller.assignPublicOrderWithRadar);
 
 router.get('/restaurant/profile', controller.getRestaurantProfile);
 router.put('/restaurant/profile', controller.updateRestaurantProfile);

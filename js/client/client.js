@@ -11,6 +11,9 @@
     activePanel: 'home',
     selectedCategory: 'all',
     selectedRatings: {},
+    selectedDishId: null,
+    lastPanelBeforeDish: 'food',
+    addressSearchCache: new Map(),
     map: null,
     routeLine: null,
     mode: 'pickup',
@@ -55,15 +58,19 @@
   function writeHistory(order) {
     let history = [];
     try { history = JSON.parse(localStorage.getItem(ORDER_HISTORY_KEY) || '[]'); } catch { history = []; }
-    history.unshift({
-      id: order?._id || order?.id || `local_${Date.now()}`,
+    const id = order?._id || order?.id || `local_${Date.now()}`;
+    const next = {
+      id,
       code: order?.verification_code || '',
       service_type: order?.service_type || '',
       price: Number(order?.price || 0),
       delivery_fee: Number(order?.delivery_fee || 0),
       createdAt: order?.createdAt || new Date().toISOString(),
-      status: order?.status || 'pendente'
-    });
+      status: order?.status || 'pendente',
+      assigned_to_driver: order?.assigned_to_driver || null
+    };
+    history = history.filter((item) => String(item.id) !== String(id));
+    history.unshift(next);
     localStorage.setItem(ORDER_HISTORY_KEY, JSON.stringify(history.slice(0, 30)));
     renderHistory();
   }
@@ -116,12 +123,14 @@
 
   function setPanel(panel) {
     if (!panel) return;
+    const isDishDetail = panel === 'dish-detail';
+    if (!isDishDetail) state.lastPanelBeforeDish = panel;
     state.activePanel = panel;
     $$('.portal-tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.panel === panel));
     $$('.portal-panel').forEach((el) => el.classList.toggle('hidden', el.dataset.panel !== panel));
     $$('.mobile-bottom-nav button[data-panel]').forEach((btn) => btn.classList.toggle('active', btn.dataset.panel === panel));
     if (panel === 'map') setTimeout(() => state.map?.invalidateSize?.(), 160);
-    if (['food', 'home'].includes(panel)) loadRestaurants();
+    if (['food', 'home', 'dish-detail'].includes(panel)) loadRestaurants();
     closeCartModal(false);
   }
 
@@ -246,6 +255,130 @@
     }
   }
 
+  function debounce(fn, wait = 320) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  async function searchAddresses(query, { limit = 8 } = {}) {
+    const cleanQuery = String(query || '').trim();
+    if (cleanQuery.length < 3) return [];
+    const cacheKey = `${cleanQuery.toLowerCase()}::${limit}`;
+    if (state.addressSearchCache.has(cacheKey)) return state.addressSearchCache.get(cacheKey);
+    const url = new URL(`${API_URL}/api/public/geo/search`);
+    url.searchParams.set('q', cleanQuery);
+    url.searchParams.set('limit', String(limit));
+    if (isValidCoord(state.deliveryCoords)) {
+      url.searchParams.set('lat', String(state.deliveryCoords.lat));
+      url.searchParams.set('lng', String(state.deliveryCoords.lng));
+    }
+    const response = await fetch(url.toString());
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || 'Não foi possível procurar endereços.');
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    state.addressSearchCache.set(cacheKey, suggestions);
+    return suggestions;
+  }
+
+  function hideAddressSuggestions(inputId) {
+    const box = document.querySelector(`[data-suggestions-for="${inputId}"]`);
+    if (box) {
+      box.innerHTML = '';
+      box.classList.remove('show');
+    }
+  }
+
+  function renderAddressSuggestions(input, suggestions, config) {
+    const box = document.querySelector(`[data-suggestions-for="${input.id}"]`);
+    if (!box) return;
+    if (!suggestions.length) {
+      box.innerHTML = '<div class="address-suggestion-empty">Sem sugestões para este texto.</div>';
+      box.classList.add('show');
+      return;
+    }
+    box.innerHTML = suggestions.map((item, index) => `
+      <button type="button" class="address-suggestion-item" data-address-index="${index}">
+        <i class="fas fa-location-dot"></i>
+        <span><strong>${escapeHtml(item.short_label || item.label)}</strong><small>${escapeHtml(item.label || '')}</small></span>
+      </button>
+    `).join('');
+    box.classList.add('show');
+    box.querySelectorAll('[data-address-index]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const selected = suggestions[Number(btn.dataset.addressIndex)];
+        if (!selected) return;
+        input.value = selected.label || selected.short_label || input.value;
+        const coords = { lat: Number(selected.lat), lng: Number(selected.lng) };
+        if (isValidCoord(coords)) {
+          if (config.latSelector) setInputValue(config.latSelector, coords.lat.toFixed(6));
+          if (config.lngSelector) setInputValue(config.lngSelector, coords.lng.toFixed(6));
+          placeMarker(config.kind, coords, selected.short_label || selected.label || 'Endereço seleccionado');
+        }
+        hideAddressSuggestions(input.id);
+      });
+    });
+  }
+
+  function setupAddressAutocomplete(config) {
+    const input = $(config.inputSelector);
+    if (!input) return;
+    const runSearch = debounce(async () => {
+      const query = input.value.trim();
+      if (query.length < 3) {
+        hideAddressSuggestions(input.id);
+        return;
+      }
+      try {
+        const suggestions = await searchAddresses(query, { limit: 8 });
+        renderAddressSuggestions(input, suggestions, config);
+      } catch (error) {
+        const box = document.querySelector(`[data-suggestions-for="${input.id}"]`);
+        if (box) {
+          box.innerHTML = `<div class="address-suggestion-empty">${escapeHtml(error.message)}</div>`;
+          box.classList.add('show');
+        }
+      }
+    }, 340);
+    input.addEventListener('input', runSearch);
+    input.addEventListener('focus', () => { if (input.value.trim().length >= 3) runSearch(); });
+    input.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideAddressSuggestions(input.id); });
+  }
+
+  async function ensureAddressCoordinates({ inputSelector, kind, latSelector, lngSelector }) {
+    const existing = {
+      lat: Number($(latSelector)?.value || (kind === 'pickup' ? state.pickupCoords?.lat : state.deliveryCoords?.lat)),
+      lng: Number($(lngSelector)?.value || (kind === 'pickup' ? state.pickupCoords?.lng : state.deliveryCoords?.lng))
+    };
+    if (isValidCoord(existing)) return existing;
+    const input = $(inputSelector);
+    const query = input?.value?.trim();
+    if (!query || query.length < 4) return null;
+    try {
+      const [first] = await searchAddresses(query, { limit: 1 });
+      if (!first) return null;
+      const coords = { lat: Number(first.lat), lng: Number(first.lng) };
+      if (!isValidCoord(coords)) return null;
+      if (latSelector) setInputValue(latSelector, coords.lat.toFixed(6));
+      if (lngSelector) setInputValue(lngSelector, coords.lng.toFixed(6));
+      placeMarker(kind, coords, first.short_label || first.label || query);
+      return coords;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function initAddressAutocomplete() {
+    setupAddressAutocomplete({ inputSelector: '#order-pickup-address', kind: 'pickup', latSelector: '#pickup-lat', lngSelector: '#pickup-lng' });
+    setupAddressAutocomplete({ inputSelector: '#order-delivery-address', kind: 'delivery', latSelector: '#delivery-lat', lngSelector: '#delivery-lng' });
+    setupAddressAutocomplete({ inputSelector: '#food-delivery-address', kind: 'delivery', latSelector: '#food-delivery-lat', lngSelector: '#food-delivery-lng' });
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.address-field')) $$('.address-suggestions.show').forEach((box) => box.classList.remove('show'));
+    });
+  }
+
   function updateDeliveryQuoteLabels(quote = null) {
     const servicePrice = Number($('#order-price')?.value || 0);
     const distance = quote?.distance_km ? `${Number(quote.distance_km).toFixed(2)} km` : '—';
@@ -290,6 +423,8 @@
     const form = event.target;
     const btn = form.querySelector('button[type="submit"]');
     const servicePrice = Number($('#order-price')?.value || 0);
+    await ensureAddressCoordinates({ inputSelector: '#order-pickup-address', kind: 'pickup', latSelector: '#pickup-lat', lngSelector: '#pickup-lng' });
+    await ensureAddressCoordinates({ inputSelector: '#order-delivery-address', kind: 'delivery', latSelector: '#delivery-lat', lngSelector: '#delivery-lng' });
     if (isValidCoord(state.pickupCoords) && isValidCoord(state.deliveryCoords) && !state.deliveryQuote) {
       await refreshDeliveryQuote();
     }
@@ -333,6 +468,7 @@
       const order = await createPublicOrder(payload);
       writeHistory(order);
       toast(`Pedido criado. Código do destinatário: ${order.verification_code || '—'}`);
+      await runDriverRadar(order);
       form.reset();
       initSessionUI();
       resetMapState();
@@ -429,7 +565,7 @@
 
   function renderFoodCard(item, restaurant, highlight = false) {
     return `
-      <article class="food-card ${highlight ? 'highlight-food-card' : ''}">
+      <article class="food-card ${highlight ? 'highlight-food-card' : ''}" data-open-dish="${escapeHtml(item.id)}" tabindex="0" role="button" aria-label="Ver detalhes de ${escapeHtml(item.name)}">
         <div class="food-image">
           ${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.name)}">` : ''}
           <span class="food-category-badge">${escapeHtml(item.category || 'Geral')}</span>
@@ -445,9 +581,65 @@
             <span class="food-price">${money(item.price)}</span>
             <button class="btn-plus" type="button" data-add-food="${escapeHtml(item.id)}" aria-label="Adicionar ${escapeHtml(item.name)}"><i class="fas fa-plus"></i></button>
           </div>
+          <small class="tap-detail-hint">Tocar para detalhes</small>
         </div>
       </article>
     `;
+  }
+
+
+  function renderDishDetail(itemId) {
+    const wrap = $('#dish-detail-content');
+    if (!wrap) return;
+    const found = findFoodItem(itemId);
+    if (!found) {
+      wrap.innerHTML = '<div class="empty-state">Este prato já não está disponível.</div>';
+      return;
+    }
+    const { item, restaurant } = found;
+    const siblings = (restaurant.menuItems || []).filter((entry) => String(entry.id) !== String(item.id));
+    wrap.innerHTML = `
+      <div class="dish-hero-grid">
+        <div class="dish-hero-image">
+          ${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.name)}">` : '<i class="fas fa-utensils"></i>'}
+          <span class="food-category-badge">${escapeHtml(item.category || 'Geral')}</span>
+        </div>
+        <div class="dish-info">
+          <span class="eyebrow-inline"><i class="fas fa-store"></i> ${escapeHtml(restaurant.name || 'Restaurante')}</span>
+          <h2>${escapeHtml(item.name)}</h2>
+          <p>${escapeHtml(item.description || 'Prato disponível para entrega pela Trago Delivery.')}</p>
+          ${renderStars({ type: 'food', id: item.id, restaurantId: restaurant.id, average: item.average_rating, count: item.rating_count })}
+          <div class="dish-meta-grid">
+            <span><strong>${money(item.price)}</strong><small>Preço</small></span>
+            <span><strong>${item.prep_time_min ? `${escapeHtml(item.prep_time_min)} min` : '—'}</strong><small>Preparação</small></span>
+            <span><strong>${Number(item.average_rating || 0).toFixed(1)}</strong><small>Avaliação</small></span>
+          </div>
+          <div class="portal-actions">
+            <button class="portal-btn primary" type="button" data-add-food="${escapeHtml(item.id)}"><i class="fas fa-cart-plus"></i> Adicionar ao carrinho</button>
+            <button class="portal-btn secondary" type="button" data-jump-panel="food"><i class="fas fa-layer-group"></i> Ver categorias</button>
+          </div>
+        </div>
+      </div>
+      <div class="restaurant-products-section">
+        <div class="card-title-row">
+          <div>
+            <h3>Mais produtos de ${escapeHtml(restaurant.name || 'Restaurante')}</h3>
+            <p>Display completo do menu publicado por este restaurante.</p>
+          </div>
+          ${renderStars({ type: 'restaurant', id: restaurant.id, restaurantId: restaurant.id, average: restaurant.average_rating, count: restaurant.rating_count })}
+        </div>
+        <div class="food-grid related-food-grid">
+          ${(siblings.length ? siblings : [item]).map((entry) => renderFoodCard(entry, restaurant)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function openDishDetail(itemId) {
+    state.selectedDishId = itemId;
+    renderDishDetail(itemId);
+    setPanel('dish-detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function renderHomeHighlights() {
@@ -683,6 +875,7 @@
     const btn = form.querySelector('button[type="submit"]');
     const restaurant = state.cart[0].restaurant;
     const subtotal = cartSubtotal();
+    await ensureAddressCoordinates({ inputSelector: '#food-delivery-address', kind: 'delivery', latSelector: '#food-delivery-lat', lngSelector: '#food-delivery-lng' });
     if (!state.foodQuote) await calculateCartDistance(false);
     const quote = state.foodQuote || {};
     const itemsSummary = state.cart.map((entry) => `${entry.qty}x ${entry.item.name} (${money(entry.item.price)})`).join('; ');
@@ -721,6 +914,7 @@
       const order = await createPublicOrder(payload);
       writeHistory(order);
       toast(`Pedido de comida enviado. Código: ${order.verification_code || '—'}`);
+      await runDriverRadar(order);
       state.cart = [];
       state.foodQuote = null;
       renderCart();
@@ -733,6 +927,94 @@
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-bag-shopping"></i> Finalizar pedido de comida';
     }
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function openRadarModal(order) {
+    const modal = $('#driver-radar-modal');
+    if (!modal) return;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    $('#radar-title') && ($('#radar-title').textContent = 'A procurar motorista livre');
+    $('#radar-message') && ($('#radar-message').textContent = `Pedido #${String(order?._id || order?.id || '').slice(-6).toUpperCase()} criado. Radar activo num raio de 5 km.`);
+    $('#radar-status') && ($('#radar-status').textContent = 'Preparando radar...');
+    $('#radar-progress-bar') && ($('#radar-progress-bar').style.width = '0%');
+  }
+
+  function updateRadarModal({ elapsedMs = 0, message = '', status = '' } = {}) {
+    const pct = Math.min(100, Math.round((elapsedMs / 60000) * 100));
+    $('#radar-progress-bar') && ($('#radar-progress-bar').style.width = `${pct}%`);
+    if (message && $('#radar-message')) $('#radar-message').textContent = message;
+    if (status && $('#radar-status')) $('#radar-status').textContent = status;
+  }
+
+  function closeRadarModal(delay = 900) {
+    const modal = $('#driver-radar-modal');
+    if (!modal) return;
+    setTimeout(() => {
+      modal.classList.remove('show');
+      modal.setAttribute('aria-hidden', 'true');
+    }, delay);
+  }
+
+  async function requestRadarAssignment(orderId) {
+    const response = await fetch(`${API_URL}/api/public/orders/${encodeURIComponent(orderId)}/radar-assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || 'Falha no radar de motoristas.');
+    return data;
+  }
+
+  async function runDriverRadar(order) {
+    const orderId = order?._id || order?.id;
+    if (!orderId) return null;
+    openRadarModal(order);
+    const startedAt = Date.now();
+    let finalData = null;
+    let attempt = 0;
+    while (Date.now() - startedAt < 60000) {
+      attempt += 1;
+      const elapsed = Date.now() - startedAt;
+      updateRadarModal({
+        elapsedMs: elapsed,
+        status: `Tentativa ${attempt} · a procurar online/livre num raio de 5 km...`
+      });
+      try {
+        const data = await requestRadarAssignment(orderId);
+        finalData = data;
+        if (data.assigned && data.order) {
+          writeHistory(data.order);
+          updateRadarModal({
+            elapsedMs: 60000,
+            message: `Motorista encontrado: ${data.driver?.name || 'Motorista Trago'} · ${Number(data.driver?.distance_km || 0).toFixed(2)} km do ponto de recolha.`,
+            status: 'Pedido atribuído automaticamente.'
+          });
+          closeRadarModal(1800);
+          toast('Motorista encontrado e pedido atribuído.');
+          return data;
+        }
+        const checked = Number(data.candidates_checked || 0);
+        updateRadarModal({
+          elapsedMs: elapsed,
+          message: checked ? `Foram verificados ${checked} motorista(s), mas nenhum está livre dentro de 5 km.` : 'Nenhum motorista livre próximo encontrado nesta tentativa.',
+          status: `Radar activo · ${Math.max(0, Math.ceil((60000 - (Date.now() - startedAt)) / 1000))}s restantes.`
+        });
+      } catch (error) {
+        updateRadarModal({ elapsedMs: elapsed, status: error.message });
+      }
+      await sleep(10000);
+    }
+    updateRadarModal({
+      elapsedMs: 60000,
+      message: 'Nenhum motorista livre foi encontrado dentro de 5 km durante a janela de radar.',
+      status: 'O pedido permanece pendente no dashboard do admin para atribuição manual.'
+    });
+    closeRadarModal(2600);
+    toast('Radar concluído. Pedido pendente para atribuição manual.', 'error');
+    return finalData;
   }
 
   async function submitRating({ type, id, restaurantId, rating }) {
@@ -784,13 +1066,21 @@
     document.addEventListener('click', (event) => {
       const closeBtn = event.target.closest('[data-close-cart]');
       if (closeBtn) closeCartModal();
+      const jumpBtn = event.target.closest('[data-jump-panel]');
+      if (jumpBtn) {
+        setPanel(jumpBtn.dataset.jumpPanel);
+        return;
+      }
       const categoryBtn = event.target.closest('[data-category-filter]');
       if (categoryBtn) {
         state.selectedCategory = categoryBtn.dataset.categoryFilter || 'all';
         renderAllFoodViews();
       }
       const addBtn = event.target.closest('[data-add-food]');
-      if (addBtn) addToCart(addBtn.dataset.addFood);
+      if (addBtn) {
+        addToCart(addBtn.dataset.addFood);
+        return;
+      }
       const incBtn = event.target.closest('[data-cart-inc]');
       if (incBtn) updateCart(incBtn.dataset.cartInc, 1);
       const decBtn = event.target.closest('[data-cart-dec]');
@@ -800,11 +1090,23 @@
       const rateFoodBtn = event.target.closest('[data-rate-food]');
       if (rateFoodBtn) submitRating({ type: 'food', id: rateFoodBtn.dataset.rateFood, restaurantId: rateFoodBtn.dataset.restaurantId, rating: rateFoodBtn.dataset.rating });
       const rateRestaurantBtn = event.target.closest('[data-rate-restaurant]');
-      if (rateRestaurantBtn) submitRating({ type: 'restaurant', id: rateRestaurantBtn.dataset.rateRestaurant, restaurantId: rateRestaurantBtn.dataset.restaurantId, rating: rateRestaurantBtn.dataset.rating });
+      if (rateRestaurantBtn) {
+        submitRating({ type: 'restaurant', id: rateRestaurantBtn.dataset.rateRestaurant, restaurantId: rateRestaurantBtn.dataset.restaurantId, rating: rateRestaurantBtn.dataset.rating });
+        return;
+      }
+      const dishCard = event.target.closest('[data-open-dish]');
+      if (dishCard && !event.target.closest('button, a, input, select, textarea')) {
+        openDishDetail(dishCard.dataset.openDish);
+      }
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeCartModal();
+      if ((event.key === 'Enter' || event.key === ' ') && event.target?.matches?.('[data-open-dish]')) {
+        event.preventDefault();
+        openDishDetail(event.target.dataset.openDish);
+      }
     });
+    initAddressAutocomplete();
   }
 
   document.addEventListener('DOMContentLoaded', () => {

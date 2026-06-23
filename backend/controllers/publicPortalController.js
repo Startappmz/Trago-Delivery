@@ -2,10 +2,12 @@ const asyncHandler = require('express-async-handler');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
+const Client = require('../models/Client');
+const DriverProfile = require('../models/DriverProfile');
 const Restaurant = require('../models/Restaurant');
 const RestaurantMenuItem = require('../models/RestaurantMenuItem');
 const RestaurantRating = require('../models/RestaurantRating');
-const { PAYMENT_METHODS, PAYMENT_STATUS, ORDER_STATUS, ADMIN_ROOM } = require('../utils/constants');
+const { PAYMENT_METHODS, PAYMENT_STATUS, ORDER_STATUS, DRIVER_STATUS, ADMIN_ROOM } = require('../utils/constants');
 const { buildRouteQuote } = require('../utils/geoPricing');
 const { createAdminNotification, shortOrderCode } = require('../utils/notifications');
 
@@ -30,6 +32,42 @@ const normalizeCoordinates = (lat, lng) => {
 const clean = (value) => (typeof value === 'string' ? value.trim() : value);
 const toNumber = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 const lowerEmail = (value) => String(value || '').trim().toLowerCase();
+
+const isValidCoordinate = (value) => value !== undefined && value !== null && value !== '' && Number.isFinite(Number(value));
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+
+const publicClient = (client) => {
+  if (!client) return null;
+  return {
+    _id: client._id,
+    id: client._id || client.id,
+    nome: client.nome,
+    telefone: client.telefone || '',
+    email: client.email || '',
+    endereco: client.endereco || '',
+    auth_provider: client.auth_provider || '',
+    avatar_url: client.avatar_url || '',
+    createdAt: client.createdAt,
+    updatedAt: client.updatedAt
+  };
+};
+
+const haversineKm = (origin, destination) => {
+  if (!origin || !destination) return Infinity;
+  const R = 6371;
+  const dLat = (Number(destination.lat) - Number(origin.lat)) * Math.PI / 180;
+  const dLng = (Number(destination.lng) - Number(origin.lng)) * Math.PI / 180;
+  const lat1 = Number(origin.lat) * Math.PI / 180;
+  const lat2 = Number(destination.lat) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const compactAddress = (label) => {
+  const parts = String(label || '').split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.slice(0, 3).join(', ') || String(label || 'Endereço');
+};
+
 
 const paymentMethodLabel = (method) => ({
   [PAYMENT_METHODS.CASH]: 'Dinheiro',
@@ -228,6 +266,261 @@ exports.createPublicRating = asyncHandler(async (req, res) => {
 });
 
 
+exports.registerPublicClient = asyncHandler(async (req, res) => {
+  const { name, phone, email, address_text } = req.body || {};
+  const cleanedName = clean(name);
+  const cleanedPhone = clean(phone);
+  const normalizedPhone = normalizePhone(cleanedPhone);
+  const normalizedEmail = lowerEmail(email);
+
+  if (!cleanedName || normalizedPhone.length < 8 || !normalizedEmail) {
+    res.status(400);
+    throw new Error('Nome, contacto válido e email são obrigatórios para registar o cliente.');
+  }
+
+  let client = await Client.findOne({ telefone: cleanedPhone });
+  if (!client && normalizedPhone !== cleanedPhone) client = await Client.findOne({ telefone: normalizedPhone });
+  if (!client && normalizedEmail) client = await Client.findOne({ email: normalizedEmail });
+
+  if (client) {
+    client.nome = cleanedName;
+    client.telefone = client.telefone || cleanedPhone;
+    client.email = normalizedEmail || client.email || '';
+    client.endereco = clean(address_text) || client.endereco || '';
+    client.auth_provider = client.auth_provider || 'local';
+    client.last_login_at = new Date();
+    await client.save();
+  } else {
+    client = await Client.create({
+      nome: cleanedName,
+      telefone: cleanedPhone,
+      email: normalizedEmail,
+      endereco: clean(address_text) || '',
+      auth_provider: 'local',
+      last_login_at: new Date()
+    });
+  }
+
+  res.status(200).json({ message: 'Cliente registado com sucesso.', client: publicClient(client) });
+});
+
+exports.googleClientAuth = asyncHandler(async (req, res) => {
+  const { id_token } = req.body || {};
+  if (!id_token) {
+    res.status(400);
+    throw new Error('Token Google em falta.');
+  }
+
+  const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(id_token)}`;
+  const googleResponse = await fetch(verifyUrl, { method: 'GET' });
+  const profile = await googleResponse.json().catch(() => ({}));
+  if (!googleResponse.ok || !profile.email || !profile.sub) {
+    res.status(401);
+    throw new Error('Não foi possível validar a conta Google.');
+  }
+
+  const expectedAudience = process.env.GOOGLE_CLIENT_ID || process.env.TRAGO_GOOGLE_CLIENT_ID || '';
+  if (expectedAudience && profile.aud !== expectedAudience) {
+    res.status(401);
+    throw new Error('Client ID Google inválido para este projecto.');
+  }
+
+  const email = lowerEmail(profile.email);
+  const subject = String(profile.sub);
+  let client = await Client.findOne({ auth_provider: 'google', auth_subject: subject });
+  if (!client) client = await Client.findOne({ email });
+
+  if (client) {
+    client.nome = clean(profile.name) || client.nome || email.split('@')[0];
+    client.email = email;
+    client.auth_provider = 'google';
+    client.auth_subject = subject;
+    client.avatar_url = clean(profile.picture) || client.avatar_url || '';
+    client.last_login_at = new Date();
+    await client.save();
+  } else {
+    client = await Client.create({
+      nome: clean(profile.name) || email.split('@')[0],
+      telefone: `google_${subject.slice(-12)}`,
+      email,
+      auth_provider: 'google',
+      auth_subject: subject,
+      avatar_url: clean(profile.picture) || '',
+      last_login_at: new Date()
+    });
+  }
+
+  res.json({
+    message: 'Cliente autenticado com Google.',
+    client: publicClient(client),
+    google: {
+      name: profile.name || '',
+      email,
+      picture: profile.picture || ''
+    }
+  });
+});
+
+exports.searchPublicAddresses = asyncHandler(async (req, res) => {
+  const query = clean(req.query.q) || '';
+  const limit = Math.max(1, Math.min(12, Number(req.query.limit || 8)));
+  if (query.length < 3) return res.json({ suggestions: [] });
+
+  const googleKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || '';
+  if (googleKey) {
+    try {
+      const autoUrl = new URL('https://maps.googleapis.com/maps/api/place/autocomplete/json');
+      autoUrl.searchParams.set('input', query);
+      autoUrl.searchParams.set('components', 'country:mz');
+      autoUrl.searchParams.set('language', 'pt');
+      autoUrl.searchParams.set('key', googleKey);
+      const autoResponse = await fetch(autoUrl.toString());
+      const autoData = await autoResponse.json().catch(() => ({}));
+      const predictions = Array.isArray(autoData.predictions) ? autoData.predictions.slice(0, limit) : [];
+      const suggestions = [];
+      for (const item of predictions) {
+        const detailsUrl = new URL('https://maps.googleapis.com/maps/api/place/details/json');
+        detailsUrl.searchParams.set('place_id', item.place_id);
+        detailsUrl.searchParams.set('fields', 'formatted_address,geometry,name,place_id');
+        detailsUrl.searchParams.set('language', 'pt');
+        detailsUrl.searchParams.set('key', googleKey);
+        const detailsResponse = await fetch(detailsUrl.toString());
+        const details = await detailsResponse.json().catch(() => ({}));
+        const result = details.result || {};
+        const location = result.geometry?.location;
+        suggestions.push({
+          label: result.formatted_address || item.description,
+          short_label: result.name || compactAddress(item.description),
+          lat: location?.lat,
+          lng: location?.lng,
+          provider: 'google_places',
+          external_id: item.place_id
+        });
+      }
+      return res.json({ suggestions: suggestions.filter((item) => isValidCoordinate(item.lat) && isValidCoordinate(item.lng)) });
+    } catch (_error) {
+      // Continua para fallback OpenStreetMap/Nominatim.
+    }
+  }
+
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('q', query);
+  url.searchParams.set('countrycodes', 'mz');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('limit', String(limit));
+  url.searchParams.set('accept-language', 'pt');
+  url.searchParams.set('viewbox', '32.20,-25.60,33.10,-26.25');
+  url.searchParams.set('bounded', '0');
+
+  const response = await fetch(url.toString(), {
+    headers: { 'User-Agent': 'TragoDelivery/1.0 contact@tragodelivery.local' }
+  });
+  const data = await response.json().catch(() => []);
+  const suggestions = (Array.isArray(data) ? data : []).slice(0, limit).map((item) => ({
+    label: item.display_name,
+    short_label: compactAddress(item.display_name),
+    lat: Number(item.lat),
+    lng: Number(item.lon),
+    provider: 'openstreetmap_nominatim',
+    external_id: item.osm_id ? String(item.osm_id) : ''
+  })).filter((item) => isValidCoordinate(item.lat) && isValidCoordinate(item.lng));
+
+  res.json({ suggestions });
+});
+
+const findNearestFreeDriver = async (targetCoords, radiusKm = 5) => {
+  if (!targetCoords) return { driver: null, candidates: [], checked: 0 };
+  const profiles = await DriverProfile.find({
+    status: DRIVER_STATUS.ONLINE_FREE,
+    'lastLocation.lat': { $exists: true, $ne: null },
+    'lastLocation.lng': { $exists: true, $ne: null }
+  }).populate('user', 'nome telefone role').lean();
+
+  const candidates = profiles
+    .filter((profile) => profile.user && profile.user.role === 'driver')
+    .map((profile) => {
+      const coords = { lat: Number(profile.lastLocation?.lat), lng: Number(profile.lastLocation?.lng) };
+      return { profile, distance_km: haversineKm(targetCoords, coords) };
+    })
+    .filter((entry) => Number.isFinite(entry.distance_km) && entry.distance_km <= radiusKm)
+    .sort((a, b) => a.distance_km - b.distance_km);
+
+  return { driver: candidates[0] || null, candidates, checked: profiles.length };
+};
+
+exports.assignPublicOrderWithRadar = asyncHandler(async (req, res) => {
+  const order = await Order.findById(req.params.id);
+  if (!order) {
+    res.status(404);
+    throw new Error('Pedido não encontrado.');
+  }
+
+  if (order.assigned_to_driver) {
+    const profile = await DriverProfile.findById(order.assigned_to_driver).populate('user', 'nome telefone role').lean();
+    return res.json({
+      assigned: true,
+      already_assigned: true,
+      order,
+      driver: profile ? {
+        id: profile._id,
+        name: profile.user?.nome || 'Motorista Trago',
+        phone: profile.user?.telefone || '',
+        distance_km: 0
+      } : null
+    });
+  }
+
+  const target = order.pickup_address_coords || order.address_coords || null;
+  if (!target || !isValidCoordinate(target.lat) || !isValidCoordinate(target.lng)) {
+    return res.json({ assigned: false, reason: 'missing_coordinates', candidates_checked: 0 });
+  }
+
+  const { driver, candidates, checked } = await findNearestFreeDriver({ lat: Number(target.lat), lng: Number(target.lng) }, 5);
+  if (!driver) {
+    return res.json({ assigned: false, reason: 'no_free_driver_in_5km', candidates_checked: checked, in_radius: candidates.length });
+  }
+
+  order.assigned_to_driver = driver.profile._id;
+  order.status = ORDER_STATUS.ASSIGNED;
+  await order.save();
+
+  const reservedProfile = await DriverProfile.findById(driver.profile._id);
+  if (reservedProfile) {
+    reservedProfile.status = DRIVER_STATUS.ONLINE_BUSY;
+    await reservedProfile.save();
+  }
+
+  const io = req.app.get('socketio');
+  if (io && driver.profile.user?._id) {
+    io.to(String(driver.profile.user._id)).emit('nova_entrega_atribuida', {
+      orderId: order._id,
+      clientName: order.client_name,
+      serviceType: order.service_type,
+      paymentMethod: order.payment_method
+    });
+    io.to(ADMIN_ROOM).emit('orders_changed', { orderId: order._id, action: 'assigned_by_client_radar' });
+    io.to(ADMIN_ROOM).emit('driver_status_changed', {
+      driverId: driver.profile._id,
+      driverUserId: driver.profile.user._id,
+      newStatus: DRIVER_STATUS.ONLINE_BUSY
+    });
+  }
+
+  res.json({
+    assigned: true,
+    order,
+    driver: {
+      id: driver.profile._id,
+      name: driver.profile.user?.nome || 'Motorista Trago',
+      phone: driver.profile.user?.telefone || '',
+      distance_km: Number(driver.distance_km.toFixed(2))
+    }
+  });
+});
+
+
+
 exports.registerRestaurant = asyncHandler(async (req, res) => {
   const { name, email, phone, address_text, password } = req.body || {};
   if (!name || !email || !phone || !password) {
@@ -294,6 +587,11 @@ exports.createPublicOrder = asyncHandler(async (req, res) => {
   }
 
   const totalOrderPrice = baseServicePrice + toNumber(routeQuote.delivery_fee, 0);
+  let linkedClientId = null;
+  if (data.customer_session_id) {
+    const possibleClient = await Client.findById(data.customer_session_id).lean();
+    if (possibleClient) linkedClientId = possibleClient._id;
+  }
   const allowedPaymentMethods = new Set(Object.values(PAYMENT_METHODS));
   const rawPayment = String(data.payment_method || '').trim();
   const paymentMethod = allowedPaymentMethods.has(rawPayment) && rawPayment !== PAYMENT_METHODS.POSTPAID_CREDIT
@@ -322,7 +620,7 @@ exports.createPublicOrder = asyncHandler(async (req, res) => {
     verification_code: generateVerificationCode(),
     created_by_admin: null,
     assigned_to_driver: null,
-    client: null,
+    client: linkedClientId,
     status: ORDER_STATUS.PENDING,
     payment_method: paymentMethod,
     payment_status: PAYMENT_STATUS.UNPAID

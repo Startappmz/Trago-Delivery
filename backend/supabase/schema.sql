@@ -67,6 +67,10 @@ create table if not exists public.clients (
   empresa text,
   nuit text,
   endereco text,
+  auth_provider text not null default '',
+  auth_subject text not null default '',
+  avatar_url text not null default '',
+  last_login_at timestamptz,
   billing_type text not null default 'prepaid' check (billing_type in ('prepaid', 'postpaid')),
   credit_limit numeric(12,2) not null default 0 check (credit_limit >= 0),
   credit_balance numeric(12,2) not null default 0 check (credit_balance >= 0),
@@ -208,6 +212,10 @@ create index if not exists idx_orders_client_completed on public.orders(client, 
 create index if not exists idx_orders_payment_method on public.orders(payment_method);
 create index if not exists idx_orders_payment_status on public.orders(payment_status);
 create index if not exists idx_clients_billing_type on public.clients(billing_type);
+create index if not exists idx_clients_email_lower on public.clients(lower(email));
+create index if not exists idx_clients_auth_provider_subject on public.clients(auth_provider, auth_subject) where auth_provider <> '' and auth_subject <> '';
+create index if not exists idx_driver_profiles_status_location on public.driver_profiles(status) where last_location is not null;
+create index if not exists idx_orders_public_radar_status on public.orders(status, created_at desc) where status in ('pendente', 'atribuido');
 create index if not exists idx_orders_route_distance on public.orders(route_distance_km);
 create index if not exists idx_trips_driver_started on public.trips(driver, started_at desc);
 create index if not exists idx_expenses_date_category on public.expenses(date desc, category);
