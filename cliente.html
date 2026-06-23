@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="trago-system.css">
   <link rel="stylesheet" href="customer-restaurant.css">
 </head>
-<body class="portal-body">
+<body class="portal-body customer-app-body">
   <header class="portal-topbar">
     <div class="portal-topbar-inner">
       <a href="cliente.html" class="portal-brand" aria-label="Trago Delivery">
@@ -24,157 +24,196 @@
       <nav class="portal-nav">
         <a class="portal-link" href="login-restaurante.html"><i class="fas fa-store"></i> Restaurantes</a>
         <a class="portal-link" href="login.html"><i class="fas fa-user-shield"></i> Admin</a>
+        <button type="button" class="portal-btn secondary desktop-cart-btn" id="btn-open-cart-desktop"><i class="fas fa-cart-shopping"></i> Carrinho <span id="cart-count-desktop" class="cart-count-badge">0</span></button>
         <button type="button" class="portal-btn ghost" id="btn-client-logout"><i class="fas fa-sign-out-alt"></i> Sair</button>
       </nav>
     </div>
   </header>
 
-  <main class="portal-shell">
-    <section class="portal-hero">
+  <main class="portal-shell customer-shell">
+    <section class="portal-hero customer-hero">
       <div>
-        <h1>Entregas e comida, no mesmo fluxo.</h1>
-        <p>Olá, <strong id="client-name-label">Cliente</strong>. Aqui pode criar pedidos com ponto de recolha/entrega e pedir comida adicionada pelos restaurantes parceiros.</p>
+        <span class="eyebrow-pill"><i class="fas fa-location-dot"></i> Maputo · Trago Delivery</span>
+        <h1>Comida, entregas e tracking num só fluxo.</h1>
+        <p>Olá, <strong id="client-name-label">Cliente</strong>. Veja novos pratos, favoritos dos clientes, faça pedidos de comida e crie entregas com recolha e destino.</p>
         <div class="portal-hero-actions">
-          <button type="button" class="portal-btn primary" onclick="document.querySelector('[data-panel=delivery]').click()"><i class="fas fa-route"></i> Criar entrega</button>
-          <button type="button" class="portal-btn secondary" onclick="document.querySelector('[data-panel=food]').click()"><i class="fas fa-utensils"></i> Pedir comida</button>
+          <button type="button" class="portal-btn primary" data-jump-panel="food"><i class="fas fa-utensils"></i> Pedir comida</button>
+          <button type="button" class="portal-btn secondary" data-jump-panel="delivery"><i class="fas fa-route"></i> Criar entrega</button>
         </div>
       </div>
     </section>
 
-    <div class="portal-tabs" role="tablist">
-      <button type="button" class="portal-tab active" data-panel="delivery"><i class="fas fa-route"></i> Criar pedido</button>
-      <button type="button" class="portal-tab" data-panel="food"><i class="fas fa-utensils"></i> Pedir comida</button>
+    <div class="portal-tabs customer-tabs" role="tablist">
+      <button type="button" class="portal-tab active" data-panel="home"><i class="fas fa-house"></i> Início</button>
+      <button type="button" class="portal-tab" data-panel="food"><i class="fas fa-utensils"></i> Comida</button>
+      <button type="button" class="portal-tab" data-panel="delivery"><i class="fas fa-route"></i> Criar pedido</button>
+      <button type="button" class="portal-tab" data-panel="map"><i class="fas fa-map-location-dot"></i> Mapa</button>
       <button type="button" class="portal-tab" data-panel="history"><i class="fas fa-clock-rotate-left"></i> Histórico</button>
     </div>
 
-    <section class="portal-panel" data-panel="delivery">
-      <div class="portal-grid">
-        <div class="portal-card">
-          <div class="card-title-row">
-            <div>
-              <h2>Criar pedido de entrega</h2>
-              <p>Os pedidos criados aqui entram directamente no dashboard do admin como pendentes.</p>
-            </div>
+    <section class="portal-panel" data-panel="home">
+      <div class="portal-card home-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Novidades dos restaurantes</h2>
+            <p>Pratos adicionados recentemente pelos restaurantes parceiros.</p>
           </div>
-          <form id="client-delivery-form" class="form-stack">
-            <div class="form-row-2">
-              <div class="portal-field">
-                <label for="order-client-name">Nome do cliente/destinatário</label>
-                <input type="text" id="order-client-name" required>
-              </div>
-              <div class="portal-field">
-                <label for="order-client-phone">Contacto principal</label>
-                <input type="tel" id="order-client-phone" required>
-              </div>
-            </div>
-            <div class="form-row-2">
-              <div class="portal-field">
-                <label for="order-client-phone2">Contacto alternativo</label>
-                <input type="tel" id="order-client-phone2" placeholder="Opcional">
-              </div>
-              <div class="portal-field">
-                <label for="order-service-type">Tipo de serviço</label>
-                <select id="order-service-type">
-                  <option value="rapido">Delivery Rápido</option>
-                  <option value="doc">Tramitação de Documentos</option>
-                  <option value="farma">Produtos Farmacêuticos</option>
-                  <option value="carga">Transporte de Cargas</option>
-                  <option value="mercadoria_cp">Mercadoria C/P</option>
-                  <option value="refeicao_restaurante_p">Refeição Restaurante P</option>
-                  <option value="outros">Outros Serviços</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row-2">
-              <div class="portal-field">
-                <label for="order-pickup-address">Ponto de recolha</label>
-                <input type="text" id="order-pickup-address" placeholder="Restaurante, loja, armazém ou morada" required>
-              </div>
-              <div class="portal-field">
-                <label for="order-delivery-address">Ponto de entrega</label>
-                <input type="text" id="order-delivery-address" placeholder="Morada final" required>
-              </div>
-            </div>
-            <div class="form-row-2">
-              <div class="portal-field">
-                <label for="order-pickup-contact-name">Responsável na recolha</label>
-                <input type="text" id="order-pickup-contact-name" placeholder="Ex: gerente, caixa, fornecedor">
-              </div>
-              <div class="portal-field">
-                <label for="order-pickup-contact-phone">Contacto da recolha</label>
-                <input type="tel" id="order-pickup-contact-phone" placeholder="Ex: 84 000 0000">
-              </div>
-            </div>
-            <div class="form-row-2">
-              <div class="portal-field">
-                <label for="order-price">Valor do serviço/encomenda (MZN)</label>
-                <input type="number" id="order-price" min="0" step="0.01" value="0" required>
-                <small class="portal-help">Quando os dois pins são marcados, o backend pode calcular a taxa por distância.</small>
-              </div>
-              <div class="portal-field">
-                <label for="order-payment-method">Método de pagamento</label>
-                <select id="order-payment-method">
-                  <option value="cash">Dinheiro</option>
-                  <option value="mpesa">M-Pesa</option>
-                  <option value="emola">e-Mola</option>
-                  <option value="mkesh">mKesh</option>
-                  <option value="bank_transfer">Transferência bancária</option>
-                  <option value="pos">POS</option>
-                </select>
-              </div>
-            </div>
-            <div class="portal-field">
-              <label for="order-notes">Notas de recolha/entrega</label>
-              <textarea id="order-notes" placeholder="Ex: perguntar por Fulano, confirmar volumes, referência do pedido..."></textarea>
-            </div>
-            <input type="hidden" id="pickup-lat"><input type="hidden" id="pickup-lng"><input type="hidden" id="delivery-lat"><input type="hidden" id="delivery-lng">
-            <div class="portal-actions">
-              <button type="submit" class="portal-btn primary"><i class="fas fa-paper-plane"></i> Criar pedido</button>
-            </div>
-          </form>
+          <button type="button" class="portal-btn secondary" data-jump-panel="food"><i class="fas fa-arrow-right"></i> Ver todos</button>
         </div>
-        <aside class="portal-card">
-          <div class="card-title-row"><div><h3>Mapa do pedido</h3><p id="map-mode-hint">Toque no mapa para marcar o ponto de recolha.</p></div></div>
-          <div class="map-toolbar">
-            <button class="map-mode active" type="button" data-mode="pickup"><i class="fas fa-box"></i> Recolha</button>
-            <button class="map-mode" type="button" data-mode="delivery"><i class="fas fa-location-dot"></i> Entrega</button>
+        <div id="new-dishes-grid" class="highlight-grid"></div>
+      </div>
+
+      <div class="portal-card home-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Favoritos dos clientes</h2>
+            <p>Destaques baseados nas avaliações de 1 a 5 estrelas.</p>
           </div>
-          <div id="client-map" class="portal-map"></div>
-          <div class="portal-actions">
-            <button type="button" class="portal-btn secondary" id="btn-use-location-pickup"><i class="fas fa-crosshairs"></i> Minha localização como recolha</button>
-            <button type="button" class="portal-btn secondary" id="btn-use-location-delivery"><i class="fas fa-location-arrow"></i> Minha localização como entrega</button>
-          </div>
-        </aside>
+          <button type="button" class="portal-btn secondary" id="btn-refresh-home"><i class="fas fa-rotate"></i> Actualizar</button>
+        </div>
+        <div id="favorite-dishes-grid" class="highlight-grid"></div>
       </div>
     </section>
 
     <section class="portal-panel hidden" data-panel="food">
-      <div class="portal-grid">
-        <div class="portal-card">
-          <div class="card-title-row">
-            <div><h2>Comidas por restaurante e categoria</h2><p>As comidas vêm do portal de cada restaurante.</p></div>
-            <button type="button" class="portal-btn secondary" id="btn-refresh-food"><i class="fas fa-rotate"></i> Actualizar</button>
+      <div class="portal-card food-page-card">
+        <div class="card-title-row food-title-row">
+          <div>
+            <h2>Comidas por restaurante e categoria</h2>
+            <p>Pesquise, filtre por categoria, avalie pratos/restaurantes e adicione ao carrinho.</p>
           </div>
-          <div class="food-search-row">
-            <div class="portal-field"><input id="food-search" type="search" placeholder="Procurar restaurante, categoria ou comida..."></div>
-          </div>
-          <div id="restaurants-container"></div>
+          <button type="button" class="portal-btn secondary" id="btn-refresh-food"><i class="fas fa-rotate"></i> Actualizar</button>
         </div>
-        <aside class="portal-card cart-card">
-          <div class="card-title-row"><div><h3>Carrinho</h3><p id="cart-restaurant-label">Selecione pratos de um restaurante.</p></div></div>
-          <div id="cart-list" class="cart-list"></div>
-          <div class="cart-total-row"><span>Subtotal</span><strong id="cart-total">0,00 MT</strong></div>
-          <form id="food-checkout-form" class="form-stack" style="margin-top:16px">
-            <div class="portal-field"><label for="food-client-name">Nome</label><input id="food-client-name" required></div>
-            <div class="portal-field"><label for="food-client-phone">Contacto</label><input id="food-client-phone" required></div>
-            <div class="portal-field"><label for="food-client-phone2">Contacto alternativo</label><input id="food-client-phone2"></div>
-            <div class="portal-field"><label for="food-delivery-address">Endereço de entrega</label><input id="food-delivery-address" required placeholder="Ex: Bairro, rua, referência"></div>
-            <input type="hidden" id="food-delivery-lat"><input type="hidden" id="food-delivery-lng">
-            <div class="portal-field"><label for="food-payment-method">Pagamento</label><select id="food-payment-method"><option value="cash">Dinheiro</option><option value="mpesa">M-Pesa</option><option value="emola">e-Mola</option><option value="mkesh">mKesh</option><option value="bank_transfer">Transferência bancária</option><option value="pos">POS</option></select></div>
-            <div class="portal-field"><label for="food-notes">Observações</label><textarea id="food-notes" placeholder="Ex: sem picante, entregar no portão..."></textarea></div>
-            <button type="submit" class="portal-btn primary"><i class="fas fa-bag-shopping"></i> Finalizar pedido de comida</button>
-          </form>
-        </aside>
+
+        <div class="food-search-row compact-search-row">
+          <div class="portal-field"><input id="food-search" type="search" placeholder="Procurar restaurante, categoria ou comida..."></div>
+          <button type="button" class="portal-btn secondary" id="btn-clear-food-filter"><i class="fas fa-filter-circle-xmark"></i> Limpar</button>
+        </div>
+
+        <div class="category-scroll-wrap" aria-label="Categorias dos pratos">
+          <div id="food-category-scroll" class="category-scroll"></div>
+        </div>
+
+        <div id="restaurants-container"></div>
+      </div>
+    </section>
+
+    <section class="portal-panel hidden" data-panel="delivery">
+      <div class="portal-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Criar pedido de entrega</h2>
+            <p>Os pedidos criados aqui entram directamente no dashboard do admin como pendentes.</p>
+          </div>
+          <button type="button" class="portal-btn secondary" data-jump-panel="map"><i class="fas fa-map"></i> Abrir mapa</button>
+        </div>
+        <form id="client-delivery-form" class="form-stack">
+          <div class="form-row-2">
+            <div class="portal-field">
+              <label for="order-client-name">Nome do cliente/destinatário</label>
+              <input type="text" id="order-client-name" required>
+            </div>
+            <div class="portal-field">
+              <label for="order-client-phone">Contacto principal</label>
+              <input type="tel" id="order-client-phone" required>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="portal-field">
+              <label for="order-client-phone2">Contacto alternativo</label>
+              <input type="tel" id="order-client-phone2" placeholder="Opcional">
+            </div>
+            <div class="portal-field">
+              <label for="order-service-type">Tipo de serviço</label>
+              <select id="order-service-type">
+                <option value="rapido">Delivery Rápido</option>
+                <option value="doc">Tramitação de Documentos</option>
+                <option value="farma">Produtos Farmacêuticos</option>
+                <option value="carga">Transporte de Cargas</option>
+                <option value="mercadoria_cp">Mercadoria C/P</option>
+                <option value="refeicao_restaurante_p">Refeição Restaurante P</option>
+                <option value="outros">Outros Serviços</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="portal-field">
+              <label for="order-pickup-address">Ponto de recolha</label>
+              <input type="text" id="order-pickup-address" placeholder="Restaurante, loja, armazém ou morada" required>
+            </div>
+            <div class="portal-field">
+              <label for="order-delivery-address">Ponto de entrega</label>
+              <input type="text" id="order-delivery-address" placeholder="Morada final" required>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="portal-field">
+              <label for="order-pickup-contact-name">Responsável na recolha</label>
+              <input type="text" id="order-pickup-contact-name" placeholder="Ex: gerente, caixa, fornecedor">
+            </div>
+            <div class="portal-field">
+              <label for="order-pickup-contact-phone">Contacto da recolha</label>
+              <input type="tel" id="order-pickup-contact-phone" placeholder="Ex: 84 000 0000">
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="portal-field">
+              <label for="order-price">Valor do serviço/encomenda (MZN)</label>
+              <input type="number" id="order-price" min="0" step="0.01" value="0" required>
+              <small class="portal-help">A taxa de entrega é calculada quando os dois pontos têm coordenadas no mapa.</small>
+            </div>
+            <div class="portal-field">
+              <label for="order-payment-method">Método de pagamento</label>
+              <select id="order-payment-method">
+                <option value="cash">Dinheiro</option>
+                <option value="mpesa">M-Pesa</option>
+                <option value="emola">e-Mola</option>
+                <option value="mkesh">mKesh</option>
+                <option value="bank_transfer">Transferência bancária</option>
+                <option value="pos">POS</option>
+              </select>
+            </div>
+          </div>
+          <div class="quote-strip">
+            <span><i class="fas fa-road"></i> Distância: <strong id="delivery-distance-label">—</strong></span>
+            <span><i class="fas fa-motorcycle"></i> Taxa: <strong id="delivery-fee-label">—</strong></span>
+            <span><i class="fas fa-receipt"></i> Total estimado: <strong id="delivery-total-label">—</strong></span>
+          </div>
+          <div class="portal-field">
+            <label for="order-notes">Notas de recolha/entrega</label>
+            <textarea id="order-notes" placeholder="Ex: perguntar por Fulano, confirmar volumes, referência do pedido..."></textarea>
+          </div>
+          <input type="hidden" id="pickup-lat"><input type="hidden" id="pickup-lng"><input type="hidden" id="delivery-lat"><input type="hidden" id="delivery-lng">
+          <div class="portal-actions">
+            <button type="submit" class="portal-btn primary"><i class="fas fa-paper-plane"></i> Criar pedido</button>
+            <button type="button" class="portal-btn secondary" data-jump-panel="map"><i class="fas fa-map-location-dot"></i> Marcar no mapa</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="portal-panel hidden" data-panel="map">
+      <div class="portal-card map-page-card">
+        <div class="card-title-row">
+          <div>
+            <h2>Mapa do pedido</h2>
+            <p id="map-mode-hint">Toque no mapa para marcar o ponto de recolha.</p>
+          </div>
+          <div class="map-mini-stats">
+            <span>Distância <strong id="map-distance-label">—</strong></span>
+            <span>Taxa <strong id="map-fee-label">—</strong></span>
+          </div>
+        </div>
+        <div class="map-toolbar">
+          <button class="map-mode active" type="button" data-mode="pickup"><i class="fas fa-box"></i> Recolha</button>
+          <button class="map-mode" type="button" data-mode="delivery"><i class="fas fa-location-dot"></i> Entrega</button>
+        </div>
+        <div id="client-map" class="portal-map separated-map"></div>
+        <div class="portal-actions map-actions-row">
+          <button type="button" class="portal-btn secondary" id="btn-use-location-pickup"><i class="fas fa-crosshairs"></i> Minha localização como recolha</button>
+          <button type="button" class="portal-btn secondary" id="btn-use-location-delivery"><i class="fas fa-location-arrow"></i> Minha localização como entrega</button>
+          <button type="button" class="portal-btn primary" data-jump-panel="delivery"><i class="fas fa-check"></i> Voltar ao pedido</button>
+        </div>
       </div>
     </section>
 
@@ -186,10 +225,57 @@
     </section>
   </main>
 
-  <nav class="mobile-bottom-nav" aria-label="Navegação do cliente">
-    <button type="button" class="active" data-panel="delivery"><i class="fas fa-route"></i><span>Entrega</span></button>
+  <div id="cart-modal" class="cart-modal" aria-hidden="true">
+    <div class="cart-backdrop" data-close-cart></div>
+    <aside class="cart-sheet" role="dialog" aria-modal="true" aria-labelledby="cart-modal-title">
+      <div class="cart-sheet-head">
+        <div>
+          <h3 id="cart-modal-title">Carrinho de compras</h3>
+          <p id="cart-restaurant-label">Selecione pratos de um restaurante.</p>
+        </div>
+        <button type="button" class="sheet-close" data-close-cart aria-label="Fechar carrinho"><i class="fas fa-xmark"></i></button>
+      </div>
+
+      <div id="cart-list" class="cart-list"></div>
+
+      <div class="cart-tools-row">
+        <button type="button" class="portal-btn secondary" id="btn-calc-cart-distance"><i class="fas fa-route"></i> Calcular distância</button>
+        <button type="button" class="portal-btn danger" id="btn-clear-cart"><i class="fas fa-trash"></i> Limpar carrinho</button>
+      </div>
+
+      <div class="cart-summary-box">
+        <div><span>Subtotal</span><strong id="cart-total">0,00 MT</strong></div>
+        <div><span>Distância até entrega</span><strong id="cart-distance-label">—</strong></div>
+        <div><span>Taxa de entrega</span><strong id="cart-delivery-fee-label">—</strong></div>
+        <div class="grand-total"><span>Total estimado</span><strong id="cart-grand-total">0,00 MT</strong></div>
+        <small id="cart-distance-help">Para calcular a distância, o restaurante precisa ter coordenadas e a entrega deve estar marcada no mapa.</small>
+      </div>
+
+      <form id="food-checkout-form" class="form-stack cart-checkout-form">
+        <div class="form-row-2">
+          <div class="portal-field"><label for="food-client-name">Nome</label><input id="food-client-name" required></div>
+          <div class="portal-field"><label for="food-client-phone">Contacto</label><input id="food-client-phone" required></div>
+        </div>
+        <div class="portal-field"><label for="food-client-phone2">Contacto alternativo</label><input id="food-client-phone2"></div>
+        <div class="portal-field"><label for="food-delivery-address">Endereço de entrega</label><input id="food-delivery-address" required placeholder="Ex: Bairro, rua, referência"></div>
+        <input type="hidden" id="food-delivery-lat"><input type="hidden" id="food-delivery-lng">
+        <div class="portal-actions compact-actions">
+          <button type="button" class="portal-btn secondary" data-jump-panel="map"><i class="fas fa-map-pin"></i> Marcar entrega no mapa</button>
+          <button type="button" class="portal-btn secondary" id="btn-food-use-my-location"><i class="fas fa-crosshairs"></i> Usar minha localização</button>
+        </div>
+        <div class="portal-field"><label for="food-payment-method">Pagamento</label><select id="food-payment-method"><option value="cash">Dinheiro</option><option value="mpesa">M-Pesa</option><option value="emola">e-Mola</option><option value="mkesh">mKesh</option><option value="bank_transfer">Transferência bancária</option><option value="pos">POS</option></select></div>
+        <div class="portal-field"><label for="food-notes">Observações</label><textarea id="food-notes" placeholder="Ex: sem picante, entregar no portão..."></textarea></div>
+        <button type="submit" class="portal-btn primary checkout-btn"><i class="fas fa-bag-shopping"></i> Finalizar pedido de comida</button>
+      </form>
+    </aside>
+  </div>
+
+  <nav class="mobile-bottom-nav customer-bottom-nav" aria-label="Navegação do cliente">
+    <button type="button" class="active" data-panel="home"><i class="fas fa-house"></i><span>Início</span></button>
     <button type="button" data-panel="food"><i class="fas fa-utensils"></i><span>Comida</span></button>
-    <button type="button" data-panel="history"><i class="fas fa-clock"></i><span>Histórico</span></button>
+    <button type="button" class="cart-nav-btn" id="btn-open-cart-mobile" data-cart-action="open"><span id="cart-count-mobile" class="cart-count-badge">0</span><i class="fas fa-cart-shopping"></i><span>Carrinho</span></button>
+    <button type="button" data-panel="map"><i class="fas fa-map"></i><span>Mapa</span></button>
+    <button type="button" data-panel="delivery"><i class="fas fa-route"></i><span>Pedido</span></button>
   </nav>
 
   <div id="portal-toast" class="portal-toast"></div>
