@@ -1575,22 +1575,102 @@ const routePublicPortals = async (req: Request, path: string, method: string) =>
       .from('restaurant_menu_items')
       .select('*')
       .eq('available', true)
+      .order('created_at', { ascending: false })
       .order('category', { ascending: true })
       .order('name', { ascending: true });
     if (menuError) throw new HttpError(500, menuError.message);
 
+    let ratings: AnyRecord[] = [];
+    const { data: ratingRows, error: ratingError } = await supabase
+      .from('restaurant_ratings')
+      .select('*');
+    if (!ratingError) ratings = ratingRows || [];
+
+    const restaurantStats = new Map<string, AnyRecord>();
+    const menuStats = new Map<string, AnyRecord>();
+    const addRating = (map: Map<string, AnyRecord>, key: string, rating: number) => {
+      if (!key) return;
+      const current = map.get(key) || { total: 0, count: 0, average: 0 };
+      current.total += Number(rating || 0);
+      current.count += 1;
+      current.average = current.count ? current.total / current.count : 0;
+      map.set(key, current);
+    };
+    ratings.forEach((row: AnyRecord) => {
+      addRating(restaurantStats, String(row.restaurant_id || ''), Number(row.rating || 0));
+      if (row.menu_item_id) addRating(menuStats, String(row.menu_item_id || ''), Number(row.rating || 0));
+    });
+    const attachRating = (target: AnyRecord, stats?: AnyRecord) => ({
+      ...target,
+      average_rating: stats ? Number(Number(stats.average || 0).toFixed(1)) : 0,
+      rating_count: stats ? Number(stats.count || 0) : 0
+    });
+
     const payload = (restaurants || []).map((restaurant: AnyRecord) => {
-      const safeRestaurant = fromRestaurant(restaurant) as AnyRecord;
+      const safeRestaurant = attachRating(fromRestaurant(restaurant) as AnyRecord, restaurantStats.get(String(restaurant.id)));
       delete safeRestaurant.email;
       return {
         ...safeRestaurant,
         menuItems: (menuItems || [])
           .filter((item: AnyRecord) => item.restaurant_id === restaurant.id)
-          .map(fromMenuItem)
+          .map((item: AnyRecord) => attachRating(fromMenuItem(item) as AnyRecord, menuStats.get(String(item.id))))
       };
     }).filter((restaurant: AnyRecord) => (restaurant.menuItems || []).length > 0);
 
     return json({ restaurants: payload });
+  }
+
+
+  if (path === '/api/public/geo/quote' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    const quote = await buildRouteQuote(body.origin, body.destination);
+    return json(quote);
+  }
+
+  if (path === '/api/public/ratings' && method === 'POST') {
+    const body = await readBody(req) as AnyRecord;
+    const ratingValue = Math.max(1, Math.min(5, Math.round(toNumber(body.rating, 0))));
+    if (!ratingValue) throw new HttpError(400, 'A avaliação deve estar entre 1 e 5 estrelas.');
+
+    let restaurantId = clean(body.restaurant_id) || '';
+    const menuItemId = clean(body.menu_item_id) || '';
+    const customerSessionId = clean(body.customer_session_id) || req.headers.get('x-forwarded-for') || 'anonymous';
+    if (!restaurantId && !menuItemId) throw new HttpError(400, 'Indique o restaurante ou o prato a avaliar.');
+
+    if (menuItemId) {
+      const menuItem = await selectOne('restaurant_menu_items', 'id', menuItemId);
+      if (!menuItem) throw new HttpError(404, 'Prato não encontrado.');
+      restaurantId = restaurantId || String(menuItem.restaurant_id || '');
+    }
+
+    const restaurant = await selectOne('restaurants', 'id', restaurantId);
+    if (!restaurant || restaurant.status !== 'active') throw new HttpError(404, 'Restaurante não encontrado.');
+
+    const { data: existing, error: existingError } = await supabase
+      .from('restaurant_ratings')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('menu_item_id', menuItemId)
+      .eq('customer_session_id', customerSessionId)
+      .maybeSingle();
+    if (existingError) throw new HttpError(500, existingError.message);
+
+    if (existing) {
+      const updated = await updateRow('restaurant_ratings', existing.id, {
+        rating: ratingValue,
+        comment: clean(body.comment) || ''
+      });
+      return json({ message: 'Avaliação guardada com sucesso.', rating: updated });
+    }
+
+    const rating = await insertRow('restaurant_ratings', {
+      restaurant_id: restaurantId,
+      menu_item_id: menuItemId,
+      customer_session_id: customerSessionId,
+      rating: ratingValue,
+      comment: clean(body.comment) || ''
+    });
+    return json({ message: 'Avaliação guardada com sucesso.', rating }, 201);
   }
 
   if (path === '/api/public/restaurants/register' && method === 'POST') {

@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const Order = require('../models/Order');
 const Restaurant = require('../models/Restaurant');
 const RestaurantMenuItem = require('../models/RestaurantMenuItem');
+const RestaurantRating = require('../models/RestaurantRating');
 const { PAYMENT_METHODS, PAYMENT_STATUS, ORDER_STATUS, ADMIN_ROOM } = require('../utils/constants');
 const { buildRouteQuote } = require('../utils/geoPricing');
 const { createAdminNotification, shortOrderCode } = require('../utils/notifications');
@@ -40,7 +41,7 @@ const paymentMethodLabel = (method) => ({
   [PAYMENT_METHODS.POSTPAID_CREDIT]: 'Cliente Pós-pago'
 }[method] || method || '—');
 
-const publicRestaurant = (restaurant) => {
+const publicRestaurant = (restaurant, ratingStats = null) => {
   if (!restaurant) return null;
   return {
     _id: restaurant._id,
@@ -54,11 +55,13 @@ const publicRestaurant = (restaurant) => {
     cover_url: restaurant.cover_url || '',
     status: restaurant.status || 'active',
     createdAt: restaurant.createdAt,
-    updatedAt: restaurant.updatedAt
+    updatedAt: restaurant.updatedAt,
+    average_rating: ratingStats ? Number(ratingStats.average.toFixed(1)) : Number(restaurant.average_rating || 0),
+    rating_count: ratingStats ? ratingStats.count : Number(restaurant.rating_count || 0)
   };
 };
 
-const publicMenuItem = (item) => ({
+const publicMenuItem = (item, ratingStats = null) => ({
   _id: item._id,
   id: item._id || item.id,
   restaurant_id: item.restaurant_id || item.restaurant,
@@ -70,7 +73,9 @@ const publicMenuItem = (item) => ({
   available: item.available !== false,
   prep_time_min: item.prep_time_min || null,
   createdAt: item.createdAt,
-  updatedAt: item.updatedAt
+  updatedAt: item.updatedAt,
+  average_rating: ratingStats ? Number(ratingStats.average.toFixed(1)) : Number(item.average_rating || 0),
+  rating_count: ratingStats ? ratingStats.count : Number(item.rating_count || 0)
 });
 
 const generateRestaurantToken = (restaurant) => jwt.sign({
@@ -81,6 +86,33 @@ const generateRestaurantToken = (restaurant) => jwt.sign({
   },
   scope: 'restaurant'
 }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+
+
+const getRatingStats = async () => {
+  const empty = { restaurant: new Map(), menu: new Map() };
+  let ratings = [];
+  try {
+    ratings = await RestaurantRating.find({}).lean();
+  } catch (_error) {
+    return empty;
+  }
+
+  const add = (map, key, value) => {
+    if (!key) return;
+    const current = map.get(String(key)) || { total: 0, count: 0, average: 0 };
+    current.total += Number(value || 0);
+    current.count += 1;
+    current.average = current.count ? current.total / current.count : 0;
+    map.set(String(key), current);
+  };
+
+  ratings.forEach((rating) => {
+    add(empty.restaurant, rating.restaurant_id, rating.rating);
+    if (rating.menu_item_id) add(empty.menu, rating.menu_item_id, rating.rating);
+  });
+
+  return empty;
+};
 
 const extractToken = (req) => {
   const authHeader = req.headers.authorization || '';
@@ -115,21 +147,86 @@ const requireRestaurant = async (req) => {
 
 exports.listPublicRestaurants = asyncHandler(async (_req, res) => {
   const restaurants = await Restaurant.find({ status: 'active' }).sort({ createdAt: -1 }).lean();
-  const menuItems = await RestaurantMenuItem.find({ available: true }).sort({ category: 1, name: 1 }).lean();
+  const menuItems = await RestaurantMenuItem.find({ available: true }).sort({ createdAt: -1, category: 1, name: 1 }).lean();
+  const ratingStats = await getRatingStats();
 
   const payload = restaurants.map((restaurant) => {
-    const safeRestaurant = publicRestaurant(restaurant);
+    const restaurantId = String(restaurant._id || restaurant.id);
+    const safeRestaurant = publicRestaurant(restaurant, ratingStats.restaurant.get(restaurantId));
     delete safeRestaurant.email;
     return {
       ...safeRestaurant,
       menuItems: menuItems
-        .filter((item) => String(item.restaurant_id || item.restaurant) === String(restaurant._id || restaurant.id))
-        .map(publicMenuItem)
+        .filter((item) => String(item.restaurant_id || item.restaurant) === restaurantId)
+        .map((item) => publicMenuItem(item, ratingStats.menu.get(String(item._id || item.id))))
     };
   }).filter((restaurant) => restaurant.menuItems.length > 0);
 
   res.json({ restaurants: payload });
 });
+
+exports.createPublicRouteQuote = asyncHandler(async (req, res) => {
+  const { origin, destination } = req.body || {};
+  const quote = await buildRouteQuote(origin, destination);
+  res.json(quote);
+});
+
+exports.createPublicRating = asyncHandler(async (req, res) => {
+  const data = req.body || {};
+  const ratingValue = Math.max(1, Math.min(5, Math.round(Number(data.rating || 0))));
+  if (!ratingValue) {
+    res.status(400);
+    throw new Error('A avaliação deve estar entre 1 e 5 estrelas.');
+  }
+
+  let restaurantId = clean(data.restaurant_id) || '';
+  const menuItemId = clean(data.menu_item_id) || '';
+  const customerSessionId = clean(data.customer_session_id) || clean(data.client_id) || req.ip || 'anonymous';
+
+  if (!restaurantId && !menuItemId) {
+    res.status(400);
+    throw new Error('Indique o restaurante ou o prato a avaliar.');
+  }
+
+  if (menuItemId) {
+    const menuItem = await RestaurantMenuItem.findById(menuItemId).lean();
+    if (!menuItem) {
+      res.status(404);
+      throw new Error('Prato não encontrado.');
+    }
+    restaurantId = restaurantId || String(menuItem.restaurant_id || menuItem.restaurant || '');
+  }
+
+  const restaurant = await Restaurant.findById(restaurantId).lean();
+  if (!restaurant || restaurant.status !== 'active') {
+    res.status(404);
+    throw new Error('Restaurante não encontrado.');
+  }
+
+  const existing = await RestaurantRating.findOne({
+    restaurant_id: restaurantId,
+    menu_item_id: menuItemId,
+    customer_session_id: customerSessionId
+  });
+
+  let rating;
+  if (existing) {
+    existing.rating = ratingValue;
+    existing.comment = clean(data.comment) || '';
+    rating = await existing.save();
+  } else {
+    rating = await RestaurantRating.create({
+      restaurant_id: restaurantId,
+      menu_item_id: menuItemId,
+      customer_session_id: customerSessionId,
+      rating: ratingValue,
+      comment: clean(data.comment) || ''
+    });
+  }
+
+  res.status(existing ? 200 : 201).json({ message: 'Avaliação guardada com sucesso.', rating });
+});
+
 
 exports.registerRestaurant = asyncHandler(async (req, res) => {
   const { name, email, phone, address_text, password } = req.body || {};
@@ -264,10 +361,13 @@ exports.getRestaurantProfile = asyncHandler(async (req, res) => {
 
 exports.updateRestaurantProfile = asyncHandler(async (req, res) => {
   const restaurant = await requireRestaurant(req);
-  const { name, phone, address_text, logo_url, cover_url } = req.body || {};
+  const { name, phone, address_text, address_coords, logo_url, cover_url } = req.body || {};
   restaurant.name = clean(name) || restaurant.name;
   restaurant.phone = clean(phone) || restaurant.phone;
   restaurant.address_text = clean(address_text) || '';
+  restaurant.address_coords = address_coords && Number.isFinite(Number(address_coords.lat)) && Number.isFinite(Number(address_coords.lng))
+    ? { lat: Number(address_coords.lat), lng: Number(address_coords.lng) }
+    : restaurant.address_coords || null;
   restaurant.logo_url = clean(logo_url) || '';
   restaurant.cover_url = clean(cover_url) || '';
   await restaurant.save();

@@ -4,6 +4,8 @@ const controller = require('../controllers/publicPortalController');
 const router = express.Router();
 
 router.get('/public/restaurants', controller.listPublicRestaurants);
+router.post('/public/geo/quote', controller.createPublicRouteQuote);
+router.post('/public/ratings', controller.createPublicRating);
 router.post('/public/restaurants/register', controller.registerRestaurant);
 router.post('/public/restaurants/login', controller.loginRestaurant);
 router.post('/public/orders', controller.createPublicOrder);

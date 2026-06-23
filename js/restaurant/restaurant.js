@@ -57,6 +57,8 @@
     $('#profile-address') && ($('#profile-address').value = p.address_text || '');
     $('#profile-logo') && ($('#profile-logo').value = p.logo_url || '');
     $('#profile-cover') && ($('#profile-cover').value = p.cover_url || '');
+    $('#profile-lat') && ($('#profile-lat').value = p.address_coords?.lat || '');
+    $('#profile-lng') && ($('#profile-lng').value = p.address_coords?.lng || '');
     const hero = $('.portal-hero');
     if (hero && p.cover_url) hero.style.backgroundImage = `linear-gradient(90deg, rgba(10,20,10,.86), rgba(10,20,10,.16)), url('${p.cover_url.replace(/'/g, '%27')}')`;
   }
@@ -96,7 +98,11 @@
           phone: $('#profile-phone')?.value,
           address_text: $('#profile-address')?.value,
           logo_url: $('#profile-logo')?.value,
-          cover_url: $('#profile-cover')?.value
+          cover_url: $('#profile-cover')?.value,
+          address_coords: ($('#profile-lat')?.value && $('#profile-lng')?.value) ? {
+            lat: Number($('#profile-lat').value),
+            lng: Number($('#profile-lng').value)
+          } : null
         })
       });
       state.profile = data.restaurant;
