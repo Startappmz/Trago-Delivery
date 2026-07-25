@@ -16,12 +16,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="css/tokens.css">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="global.css">
     <link rel="stylesheet" href="dashboard.css">
     <link rel="stylesheet" href="trago-system.css">
     <link rel="stylesheet" href="admin-mobile-shell.css">
+    <link rel="stylesheet" href="css/support-hub.css">
+    <link rel="stylesheet" href="css/admin-support-v20.css">
+    <link rel="stylesheet" href="css/admin-partners.css?v=20260725-1">
     
 
 
@@ -34,6 +38,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <link rel="stylesheet" href="trago-final-fixes.css">
+    <link rel="stylesheet" href="css/feedback.css?v=20260723-r360-1">
+    <link rel="stylesheet" href="css/experience-360.css?v=20260724-driver-choice-1">
 </head>
 <body class="dashboard-body">
     <!-- Animated Background -->
@@ -97,6 +103,14 @@
                         </a>
                     </li>
 
+                    <li class="menu-item" id="nav-parceiros">
+                        <a href="#">
+                            <i class="fas fa-store"></i>
+                            <span>Parceiros</span>
+                            <b class="admin-partner-nav-badge" id="admin-partner-nav-badge" hidden>0</b>
+                        </a>
+                    </li>
+
                     <li class="menu-item" id="nav-custos">
                         <a href="#">
                             <i class="fas fa-money-bill-wave"></i>
@@ -125,6 +139,14 @@
                         </a>
                     </li>
 
+                    <li class="menu-item" id="nav-support">
+                        <a href="#">
+                            <i class="fas fa-headset"></i>
+                            <span>Suporte Interno</span>
+                            <b class="admin-support-nav-badge" id="admin-support-nav-badge">•</b>
+                        </a>
+                    </li>
+
                     <li class="menu-item has-submenu" id="nav-portais">
                         <a href="#">
                             <i class="fas fa-link"></i>
@@ -133,6 +155,7 @@
                         <ul class="submenu">
                             <li><a href="login-cliente.html" target="_blank" rel="noopener"><i class="fas fa-user"></i> Portal Cliente</a></li>
                             <li><a href="login-restaurante.html" target="_blank" rel="noopener"><i class="fas fa-store"></i> Portal Restaurante</a></li>
+                            <li><a href="login-motorista.html" target="_blank" rel="noopener"><i class="fas fa-motorcycle"></i> Portal Motorista</a></li>
                         </ul>
                     </li>
 
@@ -594,6 +617,64 @@
                 </div>
             </div>
 
+            <!-- GESTÃO DE PARCEIROS -->
+            <div id="gestao-parceiros" class="content-page hidden">
+                <section class="admin-partners-shell">
+                    <header class="admin-partners-header">
+                        <div>
+                            <span>REDE TRAGO</span>
+                            <h2>Parceiros e candidaturas</h2>
+                            <p>Aprove estabelecimentos, controle a presença nos mapas e consulte a origem de cada candidatura.</p>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="btn-refresh-admin-partners">
+                            <i class="fas fa-rotate"></i> Actualizar
+                        </button>
+                    </header>
+
+                    <div class="admin-partner-metrics" aria-label="Resumo de parceiros">
+                        <article><i class="fas fa-inbox"></i><span><small>PENDENTES</small><strong id="partner-metric-pending">0</strong></span></article>
+                        <article><i class="fas fa-circle-check"></i><span><small>ACTIVOS NO MAPA</small><strong id="partner-metric-active">0</strong></span></article>
+                        <article><i class="fas fa-eye-slash"></i><span><small>INDISPONÍVEIS</small><strong id="partner-metric-unavailable">0</strong></span></article>
+                        <article><i class="fas fa-store"></i><span><small>TOTAL</small><strong id="partner-metric-total">0</strong></span></article>
+                    </div>
+
+                    <section class="glass-card admin-partners-card">
+                        <div class="admin-partners-toolbar">
+                            <div>
+                                <h3>Fila de validação e directório</h3>
+                                <p>Somente parceiros activos e disponíveis são apresentados nos mapas.</p>
+                            </div>
+                            <label>Estado
+                                <select id="admin-partner-status-filter" class="form-input">
+                                    <option value="">Todos</option>
+                                    <option value="pending">Pendentes</option>
+                                    <option value="active">Activos</option>
+                                    <option value="inactive">Inactivos</option>
+                                    <option value="rejected">Rejeitados</option>
+                                </select>
+                            </label>
+                        </div>
+                        <div class="table-wrapper">
+                            <table class="data-table admin-partners-table">
+                                <thead>
+                                    <tr>
+                                        <th>Estabelecimento</th>
+                                        <th>Contacto e localização</th>
+                                        <th>Estado</th>
+                                        <th>Disponibilidade no mapa</th>
+                                        <th>Submetido</th>
+                                        <th>Acções</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-partners-table-body">
+                                    <tr><td colspan="6">A carregar candidaturas…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </section>
+            </div>
+
             <!-- CUSTOS -->
             <div id="custos" class="content-page hidden">
                 <div class="custos-header">
@@ -1035,6 +1116,20 @@
                 </div>
             </div>
 
+            <!-- SUPORTE INTERNO -->
+            <div id="support-center" class="content-page hidden admin-support-page">
+                <section class="admin-support-hero">
+                    <div><span><i class="fas fa-headset"></i></span><div><small>CENTRO DE COMUNICAÇÃO TRAGO</small><h2>Suporte interno</h2><p>Uma única caixa de entrada para clientes, motoristas e restaurantes.</p></div></div>
+                    <nav aria-label="Portais interligados"><a href="cliente.html" target="_blank" rel="noopener"><i class="fas fa-user"></i> Cliente</a><a href="painel-de-entrega.html" target="_blank" rel="noopener"><i class="fas fa-motorcycle"></i> Motorista</a><a href="restaurante.html" target="_blank" rel="noopener"><i class="fas fa-utensils"></i> Restaurante</a></nav>
+                </section>
+                <div class="admin-support-metrics"><article><span class="role-client"><i class="fas fa-user"></i></span><div><small>CLIENTES</small><strong>Atendimento directo</strong></div></article><article><span class="role-driver"><i class="fas fa-motorcycle"></i></span><div><small>MOTORISTAS</small><strong>Apoio operacional</strong></div></article><article><span class="role-restaurant"><i class="fas fa-utensils"></i></span><div><small>RESTAURANTES</small><strong>Pedidos e cozinha</strong></div></article><article><span class="role-admin"><i class="fas fa-shield-halved"></i></span><div><small>ADMIN</small><strong>Gestão central</strong></div></article></div>
+                <div class="trago-support-hub admin-support-hub" data-support-hub data-support-role="admin">
+                    <div class="support-hub-top"><div><h2>Caixa de entrada operacional</h2><p>Responda, priorize e encerre conversas de todos os perfis.</p></div><button type="button" class="support-refresh admin-support-refresh" data-support-refresh><i class="fas fa-rotate"></i> Actualizar</button></div>
+                    <div class="support-notice" data-support-notice hidden></div>
+                    <div class="support-workspace"><aside class="support-sidebar"><div class="support-sidebar-head"><strong>Conversas <b data-support-count>0</b></strong><select data-support-filter aria-label="Filtrar por estado"><option value="">Todas</option><option value="open">Abertas</option><option value="pending">Em atendimento</option><option value="resolved">Resolvidas</option><option value="closed">Fechadas</option></select><button type="button" class="support-refresh" data-support-refresh aria-label="Actualizar"><i class="fas fa-rotate"></i></button></div><div class="support-thread-list" data-support-list></div></aside><div class="support-conversation-area"><div class="support-conversation-empty" data-support-conversation-empty><i class="far fa-comments"></i><h3>Seleccione um atendimento</h3><p>O histórico completo e os dados do solicitante aparecem aqui.</p></div><div class="support-conversation" data-support-conversation hidden><header class="support-conversation-head"><div><h3 data-support-subject>Conversa</h3><p data-support-meta></p><p class="support-requester" data-support-requester></p></div><div class="support-toolbar"><label>Prioridade<select data-support-priority><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label><label>Estado<select data-support-status><option value="open">Aberto</option><option value="pending">Em atendimento</option><option value="resolved">Resolvido</option><option value="closed">Fechado</option></select></label></div></header><div class="support-message-stream" data-support-messages></div><form class="support-reply" data-support-reply-form><textarea data-support-reply maxlength="2000" required placeholder="Responder como Administração TraGo…"></textarea><button type="submit" aria-label="Enviar"><i class="fas fa-paper-plane"></i></button></form></div></div></div>
+                </div>
+            </div>
+
             <!-- CONFIGURAÇÕES -->
             <div id="configuracoes" class="content-page hidden">
                 <div class="glass-card">
@@ -1185,26 +1280,6 @@
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeHistoryDetailModal()">Fechar</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="chart-reset-modal" class="modal-backdrop hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Resetar Estatísticas</h3>
-                    <button class="modal-close-btn" id="btn-close-chart-reset">×</button>
-                </div>
-                <div class="modal-body">
-                    <p>Esta ação é irreversível. Digite a senha de reset para confirmar:</p>
-                    <div class="form-group">
-                        <label for="chart-reset-password">Senha</label>
-                        <input type="password" id="chart-reset-password" class="form-input" placeholder="TragoDelivery.wipe">
-                    </div>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-danger" id="btn-confirm-chart-reset">Confirmar Reset</button>
-                    <button type="button" class="btn btn-secondary" id="btn-cancel-chart-reset">Cancelar</button>
                 </div>
             </div>
         </div>
@@ -1481,12 +1556,15 @@
             </div>
             <div class="admin-sheet-grid">
                 <button type="button" data-mobile-nav="nav-clientes"><i class="fas fa-users"></i><span>Clientes</span></button>
+                <button type="button" data-mobile-nav="nav-parceiros"><i class="fas fa-store"></i><span>Parceiros</span></button>
                 <button type="button" data-mobile-nav="nav-custos"><i class="fas fa-money-bill-wave"></i><span>Custos</span></button>
                 <button type="button" data-mobile-nav="nav-cargos"><i class="fas fa-id-badge"></i><span>Cargos</span></button>
                 <button type="button" data-mobile-nav="nav-historico"><i class="fas fa-history"></i><span>Histórico</span></button>
                 <button type="button" data-mobile-nav="nav-mapa"><i class="fas fa-map-marked-alt"></i><span>Mapa</span></button>
+                <button type="button" data-mobile-nav="nav-support"><i class="fas fa-headset"></i><span>Suporte</span></button>
                 <button type="button" onclick="window.open('login-cliente.html','_blank','noopener')"><i class="fas fa-user"></i><span>Cliente</span></button>
                 <button type="button" onclick="window.open('login-restaurante.html','_blank','noopener')"><i class="fas fa-store"></i><span>Rest.</span></button>
+                <button type="button" onclick="window.open('login-motorista.html','_blank','noopener')"><i class="fas fa-motorcycle"></i><span>Motorista</span></button>
                 <button type="button" data-mobile-nav="nav-config"><i class="fas fa-cog"></i><span>Config.</span></button>
             </div>
         </section>
@@ -1496,15 +1574,19 @@
     <script src="templatemo-glass-admin-script.js"></script>
     <script src="js/common/supabaseConfig.js"></script>
     <script src="js/common/api.js"></script>
-    <script src="js/common/auth.js"></script>
-    <script src="js/common/ui.js"></script>
-    <script src="js/common/supabaseRealtime.js"></script>
+    <script src="js/common/http.js"></script>
+    <script src="js/common/sw-register.js"></script>
+    <script src="js/common/feedback.js?v=20260723-r360-1"></script>
+    <script src="js/common/auth.js?v=20260724-driver-choice-1"></script>
+    <script src="js/common/ui.js?v=20260723-r360-3"></script>
+    <script src="js/common/supabaseRealtime.js?v=20260723-r360-4"></script>
+    <script src="js/common/support.js?v=r360-3"></script>
     <script src="js/common/geoPricing.js"></script>
-    <script src="js/admin/adminCharts.js"></script>
-    <script src="js/admin/adminMap.js"></script>
-    <script src="js/admin/adminApi.js"></script>
-    <script src="js/admin/adminModals.js"></script>
-    <script src="js/admin/admin.js"></script>
+    <script src="js/admin/adminCharts.js?v=20260723-r360-4"></script>
+    <script src="js/admin/adminMap.js?v=20260724-driver-choice-1"></script>
+    <script src="js/admin/adminApi.js?v=20260725-partners-1"></script>
+    <script src="js/admin/adminModals.js?v=20260724-driver-choice-1"></script>
+    <script src="js/admin/admin.js?v=20260725-partners-1"></script>
     
 
     

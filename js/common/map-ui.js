@@ -12,7 +12,7 @@
     attribution: '&copy; OpenStreetMap &copy; CARTO'
   });
   const ROAD_ROUTE_CACHE_LIMIT = 80;
-  const ROAD_ROUTE_CACHE_TTL_MS = 5 * 60 * 1000;
+  const ROAD_ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
   const roadRouteCache = new Map();
 
   const POINTS = Object.freeze({
@@ -261,14 +261,15 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
       body: JSON.stringify({ origin, destination })
-    }, options.timeoutMs);
+    }, Number(options.apiTimeoutMs || options.timeoutMs || 5000));
   }
 
   async function fetchOsrmRoadRoute(origin, destination, options = {}) {
     const baseUrl = String(options.osrmUrl || 'https://router.project-osrm.org').replace(/\/+$/, '');
     const coordinates = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
     const url = `${baseUrl}/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`;
-    const data = await fetchJsonWithTimeout(url, { headers: { Accept: 'application/json' } }, options.timeoutMs);
+    const providerTimeout = Math.min(5000, Number(options.timeoutMs || 5000));
+    const data = await fetchJsonWithTimeout(url, { headers: { Accept: 'application/json' } }, providerTimeout);
     const route = data?.code === 'Ok' ? data.routes?.[0] : null;
     if (!validRoadRoute(route)) return null;
     return {
@@ -287,39 +288,69 @@
       .map((value) => Number(value).toFixed(5))
       .join(':');
     const cached = roadRouteCache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+    if (cached?.route && cached.expiresAt > Date.now()) return cached.route;
+    if (cached?.promise) return cached.promise;
     if (cached) roadRouteCache.delete(key);
 
-    const apiPromise = fetchApiRoadRoute(origin, destination, options).catch(() => null);
-    const osrmPromise = fetchOsrmRoadRoute(origin, destination, options).catch(() => null);
-    const pending = new Promise((resolve) => {
-      let remaining = 2;
-      let apiFallback = null;
-      const settle = (route, source) => {
-        if (source === 'api' && route) apiFallback = route;
-        if (validRoadRoute(route)) {
-          resolve(route);
-          return;
+    const pending = (async () => {
+      const apiRoute = await fetchApiRoadRoute(origin, destination, {
+        ...options,
+        apiTimeoutMs: Number(options.apiTimeoutMs || 4500)
+      }).catch(() => null);
+      if (validRoadRoute(apiRoute)) return apiRoute;
+
+      const attempts = Math.max(1, Math.min(2, Number(options.attempts || 2)));
+      const osrmUrls = [...new Set([
+        options.osrmUrl,
+        'https://router.project-osrm.org',
+        'https://routing.openstreetmap.de/routed-car'
+      ].filter(Boolean).map((value) => String(value).replace(/\/+$/, '')))];
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+        for (const osrmUrl of osrmUrls) {
+          const osrmRoute = await fetchOsrmRoadRoute(origin, destination, { ...options, osrmUrl }).catch(() => null);
+          if (validRoadRoute(osrmRoute)) return osrmRoute;
         }
-        remaining -= 1;
-        if (remaining === 0) resolve(apiFallback || {
-          geometry: {
-            type: 'LineString',
-            coordinates: [[origin.lng, origin.lat], [destination.lng, destination.lat]]
-          },
-          distance_km: 0,
-          duration_min: null,
-          source: 'straight_fallback'
-        });
-      };
-      apiPromise.then((route) => settle(route, 'api'));
-      osrmPromise.then((route) => settle(route, 'osrm'));
-    });
-    roadRouteCache.set(key, { promise: pending, expiresAt: Date.now() + ROAD_ROUTE_CACHE_TTL_MS });
+      }
+      return null;
+    })();
+    roadRouteCache.set(key, { promise: pending, expiresAt: 0 });
     while (roadRouteCache.size > ROAD_ROUTE_CACHE_LIMIT) {
       roadRouteCache.delete(roadRouteCache.keys().next().value);
     }
-    return pending;
+    try {
+      const route = await pending;
+      if (validRoadRoute(route)) {
+        roadRouteCache.set(key, { route, expiresAt: Date.now() + ROAD_ROUTE_CACHE_TTL_MS });
+        return route;
+      }
+      roadRouteCache.delete(key);
+      return null;
+    } catch (error) {
+      roadRouteCache.delete(key);
+      throw error;
+    }
+  }
+
+  async function fetchRoadRouteSequence(values = [], options = {}) {
+    const points = (Array.isArray(values) ? values : []).map(routePoint).filter(Boolean);
+    if (points.length < 2) return null;
+    const legs = await Promise.all(points.slice(0, -1).map((origin, index) =>
+      fetchRoadRoute(origin, points[index + 1], options)
+    ));
+    if (legs.some((route) => !validRoadRoute(route))) return null;
+    const coordinates = [];
+    legs.forEach((route, index) => {
+      const legCoordinates = route.geometry.coordinates;
+      coordinates.push(...(index ? legCoordinates.slice(1) : legCoordinates));
+    });
+    return {
+      geometry: { type: 'LineString', coordinates },
+      distance_km: Number(legs.reduce((sum, route) => sum + Number(route.distance_km || 0), 0).toFixed(2)),
+      duration_min: Math.max(1, Math.round(legs.reduce((sum, route) => sum + Number(route.duration_min || 0), 0))),
+      source: legs.every((route) => route.source === legs[0]?.source) ? legs[0]?.source : 'road_route_sequence',
+      legs
+    };
   }
 
   function roadRouteLatLngs(route) {
@@ -476,6 +507,7 @@
     createPointIcon,
     drawRoute,
     fetchRoadRoute,
+    fetchRoadRouteSequence,
     observeMapSize,
     roadRouteLatLngs,
     syncPartnerLayer
