@@ -13,6 +13,7 @@
     let deliveryMarker = null;
     let driverMarker = null;
     let driverAccuracyCircle = null;
+    let routeCasingLayer = null;
     let routeLayer = null;
     let driverTrailLayer = null;
     let driverTrailPoints = [];
@@ -23,16 +24,39 @@
     let followDriver = false;
     let markerAnimationFrame = null;
     let compactMapMode = false;
+    let mapStatusControl = null;
+    let mapPartners = [];
+    let mapPartnersPromise = null;
 
     const DEFAULT_CENTER = [-25.9655, 32.5832];
     const DEFAULT_ZOOM = 13;
 
+    async function loadMapPartners() {
+        if (mapPartnersPromise) return mapPartnersPromise;
+        mapPartnersPromise = (async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/public/partners`);
+                const data = await readJsonResponse(response);
+                if (!response.ok) throw new Error(data.message || 'Parceiros indisponíveis.');
+                mapPartners = (Array.isArray(data.partners) ? data.partners : []).filter((partner) => isValidCoord(partner?.address_coords));
+                if (map) window.TragoMapUI?.syncPartnerLayer?.(map, mapPartners);
+                return mapPartners;
+            } catch (_error) {
+                return mapPartners;
+            } finally {
+                mapPartnersPromise = null;
+            }
+        })();
+        return mapPartnersPromise;
+    }
+
     function isValidCoord(coord) {
-        return Boolean(
-            coord &&
-            Number.isFinite(Number(coord.lat)) &&
-            Number.isFinite(Number(coord.lng))
-        );
+        if (!coord || coord.lat === '' || coord.lng === '' || coord.lat === null || coord.lng === null) return false;
+        const lat = Number(coord.lat);
+        const lng = Number(coord.lng);
+        return Number.isFinite(lat) && Number.isFinite(lng)
+            && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+            && !(Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001);
     }
 
     function toLatLng(coord) {
@@ -133,17 +157,17 @@
         const delivery = currentOrder?.address_coords;
         const accuracy = Number(position?.accuracy);
 
-        setHudValue('driver-map-accuracy', Number.isFinite(accuracy) ? `±${Math.round(accuracy)}m` : 'GPS —');
+        setHudValue('driver-map-accuracy', Number.isFinite(accuracy) ? `±${Math.round(accuracy)} m` : '—');
 
         if (!isValidCoord(position)) {
-            setHudValue('driver-map-distance-pickup', 'Rec.: —');
-            setHudValue('driver-map-distance-delivery', 'Ent.: —');
+            setHudValue('driver-map-distance-pickup', '—');
+            setHudValue('driver-map-distance-delivery', '—');
             updateRouteGuidance(position);
             return;
         }
 
-        setHudValue('driver-map-distance-pickup', `Rec.: ${formatDistance(distanceKm(position, pickup))}`);
-        setHudValue('driver-map-distance-delivery', `Ent.: ${formatDistance(distanceKm(position, delivery))}`);
+        setHudValue('driver-map-distance-pickup', formatDistance(distanceKm(position, pickup)));
+        setHudValue('driver-map-distance-delivery', formatDistance(distanceKm(position, delivery)));
         updateRouteGuidance(position);
     }
 
@@ -178,6 +202,9 @@
     }
 
     function createDivIcon(type, label, icon) {
+        if (window.TragoMapUI?.createPointIcon) {
+            return window.TragoMapUI.createPointIcon(type, label);
+        }
         return L.divIcon({
             className: `trago-map-pin trago-map-pin-${type}`,
             html: `<span><i class="fas ${icon}"></i></span><small>${label}</small>`,
@@ -192,7 +219,7 @@
             className: 'trago-driver-position-icon',
             html: `
                 <span class="trago-driver-position-pulse"></span>
-                <span class="trago-driver-position-dot"></span>
+                <span class="trago-driver-position-dot"><i class="fa-solid fa-motorcycle"></i></span>
                 <small>Você</small>
             `,
             iconSize: [72, 72],
@@ -220,7 +247,7 @@
         }
 
         map = L.map(mapEl, {
-            zoomControl: true,
+            zoomControl: false,
             attributionControl: true,
             scrollWheelZoom: true,
             preferCanvas: true,
@@ -229,15 +256,32 @@
             markerZoomAnimation: true
         }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
-        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            minZoom: 5,
-            detectRetina: false,
-            updateWhenIdle: false,
-            updateWhenZooming: false,
-            keepBuffer: 4,
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
+        if (window.TragoMapUI?.addBaseLayer) {
+            tileLayer = window.TragoMapUI.addBaseLayer(map, {
+                minZoom: 5,
+                updateWhenIdle: false,
+                updateWhenZooming: false
+            });
+            window.TragoMapUI.addZoomControl?.(map);
+            mapStatusControl = window.TragoMapUI.addStatusControl?.(map, {
+                label: 'Navegação activa',
+                icon: 'fa-circle',
+                tone: 'live',
+                position: 'topright'
+            }) || null;
+            window.TragoMapUI.syncPartnerLayer?.(map, mapPartners);
+            loadMapPartners();
+        } else {
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            tileLayer = L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20,
+                minZoom: 5,
+                updateWhenIdle: false,
+                updateWhenZooming: false,
+                keepBuffer: 2,
+                attribution: '&copy; OpenStreetMap &copy; CARTO'
+            }).addTo(map);
+        }
 
         map.whenReady(() => {
             invalidateMapLayout(6);
@@ -257,11 +301,12 @@
 
     function clearRoute() {
         if (!map) return;
-        [pickupMarker, deliveryMarker, routeLayer, driverTrailLayer].forEach((layer) => {
+        [pickupMarker, deliveryMarker, routeCasingLayer, routeLayer, driverTrailLayer].forEach((layer) => {
             if (layer) map.removeLayer(layer);
         });
         pickupMarker = null;
         deliveryMarker = null;
+        routeCasingLayer = null;
         routeLayer = null;
         driverTrailLayer = null;
         driverTrailPoints = [];
@@ -304,14 +349,33 @@
 
     function drawFallbackLine(origin, destination) {
         if (!map || !isValidCoord(origin) || !isValidCoord(destination)) return;
-        routeLayer = L.polyline([toLatLng(origin), toLatLng(destination)], {
-            color: '#2f7a3c',
-            weight: 5,
-            opacity: 0.9,
-            dashArray: '8, 8',
-            lineCap: 'round',
-            lineJoin: 'round'
-        }).addTo(map);
+        const points = [toLatLng(origin), toLatLng(destination)];
+        if (window.TragoMapUI?.drawRoute) {
+            const route = window.TragoMapUI.drawRoute(map, points, {
+                color: '#69be35',
+                weight: 6,
+                opacity: 0.96,
+                dashArray: '8 9'
+            });
+            routeCasingLayer = route.casing;
+            routeLayer = route.line;
+        } else {
+            routeCasingLayer = L.polyline(points, {
+                color: '#fff',
+                weight: 11,
+                opacity: 0.94,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+            routeLayer = L.polyline(points, {
+                color: '#69be35',
+                weight: 6,
+                opacity: 0.96,
+                dashArray: '8 9',
+                lineCap: 'round',
+                lineJoin: 'round'
+            }).addTo(map);
+        }
         applyRouteMotion(routeLayer);
         fitRoute();
     }
@@ -325,12 +389,19 @@
     }
 
     async function fetchRoute(origin, destination) {
+        if (window.TragoMapUI?.fetchRoadRoute) {
+            const route = await window.TragoMapUI.fetchRoadRoute(origin, destination, {
+                apiUrl: API_URL,
+                timeoutMs: 7000
+            });
+            if (route) return route;
+        }
         const response = await fetch(`${API_URL}/api/geo/route`, {
             method: 'POST',
             headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
             body: JSON.stringify({ origin, destination })
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Não foi possível carregar a rota.');
         return data;
     }
@@ -377,13 +448,30 @@
             if (sequence !== renderSequence) return;
             const latLngs = geoJsonToLatLngs(route.geometry);
             if (latLngs.length >= 2) {
-                routeLayer = L.polyline(latLngs, {
-                    color: '#2f7a3c',
-                    weight: 6,
-                    opacity: 0.94,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(activeMap);
+                if (window.TragoMapUI?.drawRoute) {
+                    const renderedRoute = window.TragoMapUI.drawRoute(activeMap, latLngs, {
+                        color: '#69be35',
+                        weight: 7,
+                        opacity: 0.98
+                    });
+                    routeCasingLayer = renderedRoute.casing;
+                    routeLayer = renderedRoute.line;
+                } else {
+                    routeCasingLayer = L.polyline(latLngs, {
+                        color: '#fff',
+                        weight: 12,
+                        opacity: 0.94,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(activeMap);
+                    routeLayer = L.polyline(latLngs, {
+                        color: '#69be35',
+                        weight: 7,
+                        opacity: 0.98,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(activeMap);
+                }
                 applyRouteMotion(routeLayer);
                 const distance = Number(route.distance_km || 0).toFixed(2);
                 const duration = route.duration_min ? ` · ${route.duration_min} min` : '';
@@ -406,7 +494,7 @@
 
     function fitRoute() {
         if (!map) return;
-        const layers = [pickupMarker, deliveryMarker, routeLayer, driverMarker, driverAccuracyCircle].filter(Boolean);
+        const layers = [pickupMarker, deliveryMarker, routeCasingLayer, routeLayer, driverMarker, driverAccuracyCircle].filter(Boolean);
         if (!layers.length) return;
 
         invalidateMapLayout(3);
@@ -464,9 +552,9 @@
 
         if (!driverTrailLayer) {
             driverTrailLayer = L.polyline(driverTrailPoints, {
-                color: '#2563eb',
+                color: '#183f29',
                 weight: 4,
-                opacity: 0.42,
+                opacity: 0.48,
                 lineCap: 'round',
                 lineJoin: 'round',
                 interactive: false
@@ -499,11 +587,11 @@
             driverAccuracyCircle = L.circle(latLng, {
                 radius,
                 stroke: true,
-                color: '#2563eb',
+                color: '#69be35',
                 weight: 1.5,
                 opacity: 0.35,
-                fillColor: '#2563eb',
-                fillOpacity: 0.10,
+                fillColor: '#69be35',
+                fillOpacity: 0.11,
                 interactive: false
             }).addTo(map);
         } else {
@@ -617,9 +705,11 @@
             deliveryMarker = null;
             driverMarker = null;
             driverAccuracyCircle = null;
+            routeCasingLayer = null;
             routeLayer = null;
             driverTrailLayer = null;
             driverTrailPoints = [];
+            mapStatusControl = null;
             if (markerAnimationFrame) cancelAnimationFrame(markerAnimationFrame);
             markerAnimationFrame = null;
         }

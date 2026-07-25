@@ -111,6 +111,76 @@ function openConfirmationModal({ title, message, confirmText, onConfirm }) {
  * Abre o modal para atribuir/reatribuir uma encomenda.
  * @param {string} orderId - O ID da encomenda.
  */
+function escapeAdminOrderChat(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+}
+
+async function openAdminDeliveryProof(orderId) {
+    const proofWindow = window.open('about:blank', '_blank');
+    if (proofWindow) proofWindow.opener = null;
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/delivery-proof`, {
+            headers: getAuthHeaders('admin')
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok || !data.url) throw new Error(data.message || 'Comprovativo indisponível.');
+        if (proofWindow) proofWindow.location.href = data.url;
+        else window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+        proofWindow?.close();
+        showCustomAlert('Comprovativo de entrega', error.message, 'error');
+    }
+}
+
+async function loadAdminOrderMessages(orderId) {
+    const stream = document.getElementById('admin-order-chat-stream');
+    if (!stream) return;
+    stream.innerHTML = '<p>A carregar conversa…</p>';
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/messages`, { headers: getAuthHeaders('admin') });
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message || 'Falha ao carregar conversa.');
+        const messages = data.messages || [];
+        stream.innerHTML = messages.length ? messages.map((message) => {
+            const role = message.senderRole || message.sender_role || 'system';
+            const channel = message.channelType || message.channel_type || 'system';
+            const channelLabels = {
+                client_driver: 'Cliente ↔ Motorista',
+                driver_partner: 'Motorista ↔ Loja',
+                system: 'Sistema',
+                support: 'Suporte'
+            };
+            const date = new Date(message.createdAt || Date.now());
+            return `<article class="admin-order-message ${role === 'admin' ? 'mine' : role === 'system' ? 'system' : ''}"><header><strong>${escapeAdminOrderChat(message.senderName || message.sender_name || role)} · ${channelLabels[channel] || channel}</strong><small>${Number.isNaN(date.getTime()) ? '' : date.toLocaleString('pt-MZ')}</small></header><p>${escapeAdminOrderChat(message.body || '')}</p></article>`;
+        }).join('') : '<p class="admin-order-chat-empty">Ainda não existem mensagens neste pedido.</p>';
+        stream.scrollTop = stream.scrollHeight;
+    } catch (error) {
+        stream.innerHTML = `<p class="admin-order-chat-error">${escapeAdminOrderChat(error.message)}</p>`;
+    }
+}
+
+async function sendAdminOrderMessage(event, orderId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const message = String(form.elements.message.value || '').trim();
+    const channel = String(form.elements.channel?.value || 'client_driver');
+    if (!message) return;
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/messages`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, channel })
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message || 'Falha ao enviar mensagem.');
+        form.reset();
+        await loadAdminOrderMessages(orderId);
+    } catch (error) { showCustomAlert('Conversa do pedido', error.message, 'error'); }
+    finally { button.disabled = false; }
+}
+
 async function openAssignModal(orderId) {
     const modal = document.getElementById('assign-modal');
     modal.classList.remove('hidden');
@@ -121,9 +191,9 @@ async function openAssignModal(orderId) {
     
     try {
         const response = await fetch(`${API_URL}/api/drivers/available`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         if (data.drivers.length === 0) { 
@@ -168,9 +238,9 @@ async function openEditDriverModal(driverUserId) {
     
     try {
         const response = await fetch(`${API_URL}/api/drivers/${driverUserId}`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         const driver = data.driver;
@@ -204,6 +274,7 @@ async function openEditDriverModal(driverUserId) {
  */
 async function openHistoryDetailModal(orderId) {
     const modal = document.getElementById('history-detail-modal');
+    modal.dataset.orderId = orderId;
     const body = document.getElementById('history-modal-body');
     modal.classList.remove('hidden');
     document.getElementById('history-modal-id').innerText = `#${orderId.slice(-6)}`;
@@ -211,9 +282,9 @@ async function openHistoryDetailModal(orderId) {
     
     try {
         const response = await fetch(`${API_URL}/api/orders/${orderId}`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         const order = data.order;
@@ -244,6 +315,7 @@ async function openHistoryDetailModal(orderId) {
             <p><strong>Estado do Pagamento:</strong> ${(order.payment_status || 'N/D').replace(/_/g, ' ')}</p>
             <p><strong>Valor confirmado:</strong> ${order.payment_confirmed_amount != null ? Number(order.payment_confirmed_amount).toFixed(2) + ' MZN' : 'N/D'}</p>
             <p><strong>Comentário do Motorista:</strong> ${order.driver_delivery_notes || 'N/D'}</p>
+            <p><strong>Comprovativo de entrega:</strong> ${order.delivery_proof_available || order.delivery_proof_url ? `<button type="button" class="btn btn-secondary btn-sm" onclick="openAdminDeliveryProof('${escapeAdminOrderChat(orderId)}')">Abrir fotografia</button>` : 'N/D'}</p>
             <p><strong>Natureza:</strong> ${SERVICE_NAMES[order.service_type] || order.service_type}</p>
             <p><strong>Status:</strong> ${typeof getOrderStatusLabel === 'function' ? getOrderStatusLabel(order.status) : order.status}</p>
             <p><strong>Código:</strong> ${order.verification_code}</p>
@@ -260,6 +332,16 @@ async function openHistoryDetailModal(orderId) {
     } catch (error) { 
         console.error('Falha ao carregar detalhes do histórico:', error); 
         body.innerHTML = '<p>Erro ao carregar detalhes.</p>'; 
+    }
+    if (!body.querySelector('.admin-order-chat') && !body.textContent.includes('Erro ao carregar')) {
+        body.insertAdjacentHTML('beforeend', `
+            <section class="admin-order-chat">
+                <header><div><small>AUDITORIA DE CANAIS PRIVADOS</small><h3>Conversas do pedido</h3><p>Os canais Cliente ↔ Motorista e Motorista ↔ Loja são separados.</p></div><button type="button" class="btn btn-secondary" onclick="loadAdminOrderMessages('${orderId}')"><i class="fas fa-sync-alt"></i> Actualizar</button></header>
+                <div id="admin-order-chat-stream" class="admin-order-chat-stream"><p>A carregar conversa…</p></div>
+                <form class="admin-order-chat-form" onsubmit="sendAdminOrderMessage(event, '${orderId}')"><label>Canal<select name="channel" required><option value="client_driver">Cliente ↔ Motorista</option><option value="driver_partner">Motorista ↔ Loja</option></select></label><textarea name="message" maxlength="2000" required placeholder="Escreva apenas para o canal seleccionado"></textarea><button class="btn btn-primary" type="submit"><i class="fas fa-paper-plane"></i> Enviar</button></form>
+            </section>
+        `);
+        await loadAdminOrderMessages(orderId);
     }
 }
 
@@ -283,9 +365,9 @@ async function openDriverReportModal(driverUserId, driverName) {
     
     try {
         const response = await fetch(`${API_URL}/api/drivers/${driverUserId}/report`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         const orders = data.orders;
@@ -345,9 +427,9 @@ async function openEditClientModal(clientId) {
 
     try {
         const response = await fetch(`${API_URL}/api/clients/${clientId}`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         const client = data.client;

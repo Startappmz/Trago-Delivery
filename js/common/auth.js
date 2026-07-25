@@ -14,8 +14,6 @@ let loginInProgress = false;
  * Verifica se um utilizador (admin ou motorista) está autenticado.
  */
 function checkAuth(role) {
-    console.log('checkAuth iniciado para role:', role);
-
     let token = null;
     let loginPage = 'login.html';
 
@@ -29,8 +27,6 @@ function checkAuth(role) {
         console.error('checkAuth: role inválido:', role);
         return false;
     }
-
-    console.log('Token encontrado:', token);
 
     const tokenInvalid =
         !token ||
@@ -50,7 +46,6 @@ function checkAuth(role) {
         return false;
     }
 
-    console.log('checkAuth: acesso permitido');
     return true;
 }
 
@@ -113,10 +108,7 @@ async function handleLogin(e, role) {
             );
         }
 
-        const data = await response.json();
-
-        // 🔥 LOG CRÍTICO (NOVO)
-        console.log('LOGIN RESPONSE:', data);
+        const data = await readJsonResponse(response);
 
         if (!response.ok) {
             throw new Error(data.message || 'Erro no login');
@@ -132,7 +124,7 @@ async function handleLogin(e, role) {
     data?.user?.token;
 
 if (!token) {
-    console.error('TOKEN NÃO ENCONTRADO NA RESPONSE:', data);
+    console.error('A resposta de autenticação não incluiu um token.');
     throw new Error('Falha de autenticação: token não recebido do servidor.');
 }
 
@@ -148,12 +140,13 @@ localStorage.setItem('adminToken', token);
     data?.user?.token;
 
 if (!token) {
-    console.error('TOKEN NÃO ENCONTRADO NA RESPONSE:', data);
+    console.error('A resposta de autenticação não incluiu um token.');
     throw new Error('Falha de autenticação: token não recebido do servidor.');
 }
 
 localStorage.setItem('driverToken', token);
             localStorage.setItem('driverName', data.user?.nome || 'Motorista');
+            localStorage.setItem('driverId', data.user?._id || data.user?.id || '');
             window.location.replace('painel-de-entrega.html');
         }
 
@@ -162,8 +155,10 @@ localStorage.setItem('driverToken', token);
 
         if (typeof showCustomAlert === 'function') {
             showCustomAlert('Erro de Login', error.message, 'error');
+        } else if (window.TragoFeedback) {
+            window.TragoFeedback.alert({ title: 'Erro de login', message: error.message, type: 'error' });
         } else {
-            alert(error.message);
+            console.error(`[TraGo] Erro de login: ${error.message}`);
         }
 
     } finally {
@@ -254,7 +249,7 @@ async function requestPasswordResetCode() {
             body: JSON.stringify({ email, role })
         });
 
-        const data = await response.json().catch(() => ({}));
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Não foi possível enviar o código de restauração.');
 
         setPasswordResetStep('confirm');
@@ -307,7 +302,7 @@ async function handlePasswordReset(event) {
             body: JSON.stringify({ email, role, code, newPassword })
         });
 
-        const data = await response.json().catch(() => ({}));
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Não foi possível restaurar a password.');
 
         closePasswordResetModal();
@@ -341,19 +336,44 @@ if (document.readyState === 'loading') {
     installPasswordResetHandlers();
 }
 
-function handle401Safely(role) {
-    console.warn('⚠️ 401 recebido — verificação segura');
+let auth401ValidationPromise = null;
 
+async function handle401Safely(role) {
     const tokenKey = role === 'admin' ? 'adminToken' : 'driverToken';
     const token = localStorage.getItem(tokenKey);
 
-    // 🔒 só faz logout se realmente não houver token
     if (!token) {
-        console.warn('🔴 Sem token — logout forçado');
-        handleLogout(role);
-    } else {
-        console.warn('🟡 Token existe — NÃO fazer logout automático');
+        await handleLogout(role);
+        return false;
     }
+
+    if (auth401ValidationPromise) return auth401ValidationPromise;
+
+    auth401ValidationPromise = (async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/auth/me`, {
+                method: 'GET',
+                headers: { Authorization: `Bearer ${token}` },
+                cache: 'no-store'
+            });
+            if (response.status === 401 || response.status === 403) {
+                await handleLogout(role);
+                return false;
+            }
+            if (!response.ok) {
+                console.warn(`A validação da sessão ${role} respondeu com ${response.status}; a sessão local foi preservada.`);
+                return true;
+            }
+            return true;
+        } catch (error) {
+            console.warn(`Não foi possível validar a sessão ${role}; a sessão local foi preservada para nova tentativa.`, error);
+            return true;
+        } finally {
+            auth401ValidationPromise = null;
+        }
+    })();
+
+    return auth401ValidationPromise;
 }
 
 /**
@@ -393,6 +413,7 @@ async function handleLogout(role) {
         } else {
             localStorage.removeItem('driverToken');
             localStorage.removeItem('driverName');
+            localStorage.removeItem('driverId');
         }
         window.location.replace(loginPage);
     }

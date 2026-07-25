@@ -14,6 +14,7 @@ let locationRetryCount = 0;
 let driverRealtimeSubscription = null;
 let driverOnlineConfirmed = false;
 let offlineInProgress = false;
+let locationPromptDismissed = false;
 
 const MAX_RETRIES = 3;
 const HEARTBEAT_INTERVAL_MS = 30000;
@@ -68,24 +69,44 @@ function updateLocationNote(html, color = 'var(--danger)') {
     note.innerHTML = html;
 }
 
-function hideLocationModal() {
-    document.getElementById('location-permission-modal')?.classList.add('hidden');
+function hideLocationModal({ dismissed = false } = {}) {
+    const modal = document.getElementById('location-permission-modal');
+    if (!modal) return;
+    locationPromptDismissed = dismissed;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
 }
 
-function showLocationPermissionModal() {
+function showLocationPermissionModal({ force = false } = {}) {
     const modal = document.getElementById('location-permission-modal');
     if (!modal) {
         requestLocationPermission();
         return;
     }
 
+    if (locationPromptDismissed && !force) return;
+
     modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
     const note = document.getElementById('location-permission-note');
-    if (note) note.style.display = 'none';
+    if (note) {
+        note.style.display = 'block';
+        note.style.color = 'var(--driver-muted, #69736b)';
+        note.textContent = 'A TraGo usa o GPS durante o turno para atribuir pedidos, calcular a rota e manter a operação segura.';
+    }
     emitDriverLocationState('waiting', 'GPS por activar', 'Toque em permitir para ficar disponível para entregas.');
 
     const closeBtn = document.getElementById('close-location-modal');
-    if (closeBtn) closeBtn.style.display = 'none';
+    if (closeBtn) {
+        closeBtn.style.display = '';
+        closeBtn.onclick = () => {
+            hideLocationModal({ dismissed: true });
+            markDriverOffline({ keepalive: false });
+            emitDriverLocationState('warning', 'Motorista offline', 'Active o GPS quando quiser começar a receber entregas.');
+        };
+    }
 
     const allowBtn = document.getElementById('allow-location-btn');
     const denyBtn = document.getElementById('deny-location-btn');
@@ -97,14 +118,14 @@ function showLocationPermissionModal() {
     denyBtn.parentNode.replaceChild(newDenyBtn, denyBtn);
 
     newAllowBtn.addEventListener('click', () => {
+        locationPromptDismissed = false;
         requestLocationPermission();
     });
 
     newDenyBtn.addEventListener('click', () => {
-        updateLocationNote('<i class="fas fa-exclamation-triangle"></i> A localização é obrigatória para receber entregas. Clique em “Permitir Localização” e aceite a autorização do navegador.');
-        if (typeof showCustomAlert === 'function') {
-            showCustomAlert('Localização obrigatória', 'Sem GPS activo o motorista fica offline e não pode receber entregas.', 'error');
-        }
+        hideLocationModal({ dismissed: true });
+        markDriverOffline({ keepalive: false });
+        emitDriverLocationState('warning', 'Motorista offline', 'Sem GPS activo não receberá novas entregas.');
     });
 }
 
@@ -141,7 +162,8 @@ function stopHeartbeat() {
 function requestLocationPermission() {
     if (!navigator.geolocation) {
         updateLocationNote('<i class="fas fa-times-circle"></i> Este dispositivo/navegador não suporta geolocalização.');
-        if (typeof showCustomAlert === 'function') {
+        const modalOpen = !document.getElementById('location-permission-modal')?.classList.contains('hidden');
+        if (!modalOpen && typeof showCustomAlert === 'function') {
             showCustomAlert('GPS indisponível', 'O dispositivo não suporta geolocalização. Não é possível iniciar turno.', 'error');
         }
         markDriverOffline({ keepalive: false });
@@ -160,9 +182,6 @@ function requestLocationPermission() {
                 markDriverOffline({ keepalive: false });
                 updateLocationNote('<i class="fas fa-ban"></i> A localização está bloqueada. Abra as permissões do navegador para este site e active “Localização”.');
                 emitDriverLocationState('error', 'GPS bloqueado', 'Abra as permissões da aplicação e active Localização.');
-                if (typeof showCustomAlert === 'function') {
-                    showCustomAlert('Localização bloqueada', 'Active a localização nas permissões do navegador e clique em “Reativar Partilha de Localização”.', 'error', 8000);
-                }
                 return;
             }
 
@@ -204,7 +223,7 @@ function handleLocationError(error, isRequired = false) {
         locationPermissionDenied = true;
         errorMessage = 'Permissão de localização negada. Active a localização no navegador para iniciar o turno.';
         markDriverOffline({ keepalive: false });
-        showLocationPermissionModal();
+        showLocationPermissionModal({ force: true });
         updateLocationNote('<i class="fas fa-exclamation-triangle"></i> Permissão negada. O motorista permanece offline até a localização ser permitida.');
     } else if (error?.code === error.POSITION_UNAVAILABLE) {
         errorMessage = 'GPS indisponível. Verifique se a localização do dispositivo está ligada.';
@@ -221,7 +240,11 @@ function handleLocationError(error, isRequired = false) {
     const statusState = error?.code === error.PERMISSION_DENIED ? 'error' : 'warning';
     emitDriverLocationState(statusState, statusState === 'error' ? 'GPS bloqueado' : 'GPS instável', errorMessage);
 
-    if (typeof showCustomAlert === 'function') {
+    const locationModalOpen = !document.getElementById('location-permission-modal')?.classList.contains('hidden');
+    if (locationModalOpen && error?.code !== error.PERMISSION_DENIED) {
+        updateLocationNote(`<i class="fas fa-location-crosshairs"></i> ${errorMessage}`, 'var(--driver-amber, #9a6711)');
+    }
+    if (!locationModalOpen && typeof showCustomAlert === 'function') {
         showCustomAlert('Localização', errorMessage, 'error', 6500);
     }
 }
@@ -234,10 +257,35 @@ function connectDriverSocket() {
     }
 
     function handleDriverRealtimeEvent(event, data = {}) {
+        if (event === 'order_message_created' || event === 'restaurant_order_status_changed' || event === 'order_status_changed') {
+            document.dispatchEvent(new CustomEvent('trago_order_communication', { detail: data }));
+            if (event === 'restaurant_order_status_changed' && data.restaurantStatus === 'ready' && typeof showCustomAlert === 'function') {
+                showCustomAlert('Pedido pronto', `O restaurante marcou o pedido #${data.orderId ? data.orderId.slice(-6) : ''} como pronto para levantamento.`, 'success');
+            }
+            if (event === 'restaurant_order_status_changed' && data.restaurantStatus === 'rejected') {
+                if (typeof showCustomAlert === 'function') showCustomAlert('Pedido recusado', 'O restaurante recusou o pedido. A entrega foi retirada da sua fila.', 'info');
+                document.dispatchEvent(new Event('nova_entrega'));
+            }
+            return;
+        }
+
         if (event === 'nova_entrega_atribuida') {
             playNotificationSound();
             if (typeof showCustomAlert === 'function') {
                 showCustomAlert('Nova Entrega!', `Novo pedido de ${data.clientName || 'cliente'}.`, 'success');
+            }
+            document.dispatchEvent(new Event('nova_entrega'));
+            return;
+        }
+
+        if (event === 'nova_oferta_entrega') {
+            playNotificationSound();
+            if (typeof showCustomAlert === 'function') {
+                showCustomAlert(
+                    'Novo pedido para decidir',
+                    `${data.clientName || 'Cliente'} solicitou uma entrega. Consulte o resumo e escolha aceitar ou recusar.`,
+                    'info'
+                );
             }
             document.dispatchEvent(new Event('nova_entrega'));
             return;
@@ -263,7 +311,6 @@ function connectDriverSocket() {
         token,
         onEvent: handleDriverRealtimeEvent,
         onReady: () => {
-            console.log('Motorista ligado ao canal Realtime. Aguardando GPS para ficar online.');
             showLocationPermissionModal();
             document.body.addEventListener('click', unlockAudio, { once: true });
             document.body.addEventListener('touchstart', unlockAudio, { once: true });
@@ -371,7 +418,8 @@ async function shutdownDriverTracking(options = {}) {
 function restartLocationTracking() {
     locationPermissionDenied = false;
     locationRetryCount = 0;
-    showLocationPermissionModal();
+    locationPromptDismissed = false;
+    showLocationPermissionModal({ force: true });
 }
 
 window.addEventListener('pagehide', () => {

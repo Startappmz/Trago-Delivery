@@ -20,7 +20,11 @@ function showCustomAlert(title, message, type = 'info') {
     // ... (código sem alterações) ...
     const modal = document.getElementById('custom-alert-modal');
     if (!modal) { 
-        alert(`${title}: ${message}`);
+        if (window.TragoFeedback) {
+            window.TragoFeedback.alert({ title, message, type });
+        } else {
+            console[type === 'error' ? 'error' : 'info'](`[TraGo] ${title}: ${message}`);
+        }
         return; 
     }
     const modalContent = modal.querySelector('.modal-content');
@@ -47,13 +51,6 @@ function closeEditDriverModal() {
 }
 function closeHistoryDetailModal() { 
     document.getElementById('history-detail-modal').classList.add('hidden'); 
-}
-function closeChartResetModal() { 
-    document.getElementById('chart-reset-modal').classList.add('hidden'); 
-    document.getElementById('chart-reset-password').value = ''; 
-}
-function openChartResetModal() { 
-    document.getElementById('chart-reset-modal').classList.remove('hidden'); 
 }
 function closeDriverReportModal() { 
     document.getElementById('driver-report-modal').classList.add('hidden'); 

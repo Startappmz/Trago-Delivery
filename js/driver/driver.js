@@ -4,55 +4,75 @@
  */
 
 /* --- PONTO DE ENTRADA (Entry Point) --- */
+let driverNavigation = null;
+let driverActiveOrderId = '';
+let driverOrderChatTimer = null;
+let driverActiveChatChannel = 'client_driver';
+
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth('driver');
+    initDriverModalGuard();
     connectDriverSocket();
     attachDriverEventListeners();
     loadDriverProfileVisibility();
     setInterval(() => checkDriverPaymentPendingAlerts(false), 120000);
-    
-    // Carrega a página inicial
-    showDriverPage('lista-entregas');
+    initDriverNavigation();
 });
+
+function initDriverModalGuard() {
+    const modals = [...document.querySelectorAll('.driver-modal')];
+    if (!modals.length) return;
+
+    const sync = () => {
+        let hasOpenModal = false;
+        modals.forEach((modal) => {
+            const isOpen = !modal.classList.contains('hidden');
+            modal.setAttribute('aria-hidden', String(!isOpen));
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            hasOpenModal ||= isOpen;
+        });
+        document.body.classList.toggle('driver-modal-open', hasOpenModal);
+    };
+
+    const observer = new MutationObserver(sync);
+    modals.forEach((modal) => observer.observe(modal, { attributes: true, attributeFilter: ['class'] }));
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        const openModals = modals.filter((modal) => !modal.classList.contains('hidden'));
+        const topModal = openModals[openModals.length - 1];
+        topModal?.querySelector('.modal-close')?.click();
+    });
+    sync();
+}
 
 /**
  * Anexa todos os event listeners do painel do motorista.
  */
 function attachDriverEventListeners() {
-    
-    // --- Lógica do Menu Mobile ---
-    const menuToggle = document.getElementById('mobile-driver-menu-toggle');
-    const mobileMenu = document.getElementById('driver-mobile-nav');
-    const mainContent = document.querySelector('.motorista-main');
-
-    if (menuToggle && mobileMenu) {
-        menuToggle.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            mobileMenu.classList.toggle('open');
+    document.getElementById('driver-order-chat-form')?.addEventListener('submit', sendDriverOrderMessage);
+    document.querySelectorAll('[data-driver-chat-channel]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const channel = button.dataset.driverChatChannel;
+            if (!['client_driver', 'driver_partner'].includes(channel)) return;
+            driverActiveChatChannel = channel;
+            document.querySelectorAll('[data-driver-chat-channel]').forEach((item) => {
+                const active = item === button;
+                item.classList.toggle('active', active);
+                item.setAttribute('aria-pressed', String(active));
+            });
+            const textarea = document.querySelector('#driver-order-chat-form textarea');
+            if (textarea) textarea.placeholder = channel === 'driver_partner'
+                ? 'Escrever ao Estabelecimento'
+                : 'Escrever ao Cliente';
+            if (driverActiveOrderId) loadDriverOrderMessages(driverActiveOrderId);
         });
-        mainContent.addEventListener('click', () => {
-            if (mobileMenu.classList.contains('open')) {
-                mobileMenu.classList.remove('open');
-            }
-        });
-    }
-    
-    // Links do menu mobile
-    document.getElementById('mobile-nav-ganhos')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        showDriverPage('meus-ganhos');
-        mobileMenu.classList.remove('open');
     });
-    document.getElementById('mobile-nav-config')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        showDriverPage('configuracoes-motorista');
-        mobileMenu.classList.remove('open');
+    document.addEventListener('trago_order_communication', (event) => {
+        if (!driverActiveOrderId || (event.detail?.orderId && String(event.detail.orderId) !== String(driverActiveOrderId))) return;
+        loadDriverOrderMessages(driverActiveOrderId, true);
+        if (event.detail?.pickupAuthorized || event.detail?.restaurantStatus === 'ready') updateDriverRestaurantReady('ready');
     });
-    document.getElementById('mobile-nav-logout')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout('driver');
-    });
-
     // Botão de Logout (Desktop)
     document.getElementById('driver-logout')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -61,12 +81,12 @@ function attachDriverEventListeners() {
     
     // Botão de Configurações (Desktop)
     document.getElementById('driver-settings')?.addEventListener('click', () => {
-        showDriverPage('configuracoes-motorista');
+        showDriverPage('configuracoes-motorista', { root: true, source: 'root' });
     });
     
     // Botão de Ganhos (Desktop)
     document.getElementById('driver-earnings')?.addEventListener('click', () => {
-        showDriverPage('meus-ganhos');
+        showDriverPage('meus-ganhos', { root: true, source: 'root' });
     });
     
     // Botões "Voltar"
@@ -86,7 +106,6 @@ function attachDriverEventListeners() {
     
     // Listener de Notificação (socket -> driver.js recarrega lista)
     document.addEventListener('nova_entrega', () => {
-        console.log('Evento "nova_entrega" recebido. A recarregar a lista...');
         const listaSection = document.getElementById('lista-entregas');
         if (listaSection && !listaSection.classList.contains('hidden')) {
             loadMyDeliveries();
@@ -128,11 +147,12 @@ function attachDriverEventListeners() {
     document.getElementById('form-change-password-driver')?.addEventListener('submit', handleChangePasswordDriver);
 
     // App shell mobile: navegação inferior, refresh e estado de GPS
-    document.getElementById('driver-brand-home')?.addEventListener('click', () => showDriverPage('lista-entregas'));
+    document.getElementById('driver-brand-home')?.addEventListener('click', () => showDriverPage('lista-entregas', { root: true, source: 'root' }));
     document.querySelectorAll('[data-driver-nav]').forEach((button) => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
             const target = button.dataset.driverNav;
-            if (target) showDriverPage(target);
+            if (target) showDriverPage(target, button.hasAttribute('data-nav-root') ? { root: true, source: 'root' } : {});
         });
     });
     document.querySelectorAll('[data-driver-action="logout"]').forEach((button) => {
@@ -161,6 +181,14 @@ function attachDriverEventListeners() {
         });
     });
 
+    document.getElementById('driver-refresh-earnings')?.addEventListener('click', () => {
+        const button = document.getElementById('driver-refresh-earnings');
+        const period = document.getElementById('driver-earnings-period-select')?.value || 'month';
+        button?.classList.add('is-loading');
+        Promise.resolve(loadMyEarnings(period)).finally(() => button?.classList.remove('is-loading'));
+    });
+    document.getElementById('driver-export-earnings')?.addEventListener('click', exportDriverEarnings);
+
     document.addEventListener('driver_location_updated', (event) => {
         updateDriverLocationStatus('active', 'GPS activo', 'Localização em tempo real.', event.detail?.timestamp);
     });
@@ -173,7 +201,13 @@ function attachDriverEventListeners() {
 
 /* --- Lógica de Navegação do Motorista --- */
 
-function showDriverPage(pageId) {
+function showDriverPage(pageId, options = {}) {
+    if (driverNavigation) return driverNavigation.navigate(pageId, options);
+    renderDriverPage(pageId);
+    return pageId;
+}
+
+function renderDriverPage(pageId) {
     const safePageId = pageId || 'lista-entregas';
 
     // Esconde todas as secções
@@ -181,6 +215,7 @@ function showDriverPage(pageId) {
     document.getElementById('detalhe-entrega')?.classList.add('hidden');
     document.getElementById('configuracoes-motorista')?.classList.add('hidden');
     document.getElementById('meus-ganhos')?.classList.add('hidden');
+    document.getElementById('suporte-motorista')?.classList.add('hidden');
 
     // Mostra a secção pedida
     const pageToShow = document.getElementById(safePageId);
@@ -197,12 +232,16 @@ function showDriverPage(pageId) {
     }
     if (safePageId === 'configuracoes-motorista') {
         document.getElementById('form-change-password-driver')?.reset();
+        window.TragoDriverProfile?.refresh?.();
     }
     if (safePageId === 'meus-ganhos') {
         const period = document.getElementById('driver-completed-period-select')?.value
             || document.getElementById('driver-earnings-period-select')?.value
             || 'month';
         loadMyEarnings(period);
+    }
+    if (safePageId === 'suporte-motorista') {
+        window.TragoSupport?.openHub?.('driver');
     }
     if (safePageId === 'detalhe-entrega') {
         requestAnimationFrame(() => window.TragoDriverMap?.invalidate?.());
@@ -211,14 +250,38 @@ function showDriverPage(pageId) {
     }
 
     if (window.matchMedia('(max-width: 900px)').matches) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'auto' });
     }
+}
+
+function initDriverNavigation() {
+    document.querySelectorAll('.btn-voltar').forEach((button) => {
+        button.setAttribute('data-smart-back', '');
+        if (!button.hasAttribute('aria-label')) button.setAttribute('aria-label', 'Voltar');
+    });
+    if (!window.TragoNavigation) {
+        renderDriverPage('lista-entregas');
+        return;
+    }
+    driverNavigation = window.TragoNavigation.create({
+        role: 'driver',
+        scope: localStorage.getItem('driverId') || localStorage.getItem('driverName') || 'anonymous',
+        pages: ['lista-entregas', 'detalhe-entrega', 'configuracoes-motorista', 'meus-ganhos', 'suporte-motorista'],
+        defaultPage: 'lista-entregas',
+        transientPages: ['detalhe-entrega'],
+        getCurrent: () => document.body.dataset.driverPage || 'lista-entregas',
+        render: renderDriverPage
+    });
+    driverNavigation.restore();
 }
 
 function updateDriverActiveNav(pageId) {
     const navPage = pageId === 'detalhe-entrega' ? 'lista-entregas' : pageId;
     document.querySelectorAll('[data-driver-nav]').forEach((button) => {
-        button.classList.toggle('active', button.dataset.driverNav === navPage);
+        const active = button.dataset.driverNav === navPage;
+        button.classList.toggle('active', active);
+        if (active) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
     });
 }
 
@@ -264,6 +327,77 @@ window.updateDriverLocationStatus = updateDriverLocationStatus;
 
 /* --- Lógica de API (GET) --- */
 
+function renderDriverOffers(offers = []) {
+    const card = document.getElementById('driver-offers-card');
+    const container = document.getElementById('driver-offers-container');
+    const count = document.getElementById('driver-offers-count');
+    if (!card || !container) return;
+    card.hidden = offers.length === 0;
+    if (count) count.textContent = String(offers.length);
+    container.innerHTML = offers.map((order) => {
+        const orderId = String(order._id || order.id || '');
+        const pickup = compactPlaceName(order.pickup_address_text || order.pickup_address || '', 'Recolha');
+        const delivery = compactPlaceName(order.address_text || order.delivery_address || '', 'Entrega');
+        const service = SERVICE_NAMES[order.service_type] || order.service_type || 'Serviço';
+        const expiresAt = new Date(order.driver_offer_expires_at || 0).getTime();
+        const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+        return `
+            <article class="driver-offer-card" data-driver-offer="${escapeHtml(orderId)}">
+                <header><span><i class="fa-solid fa-bolt"></i> Pedido próximo</span><b data-offer-countdown="${expiresAt}">${seconds}s</b></header>
+                <div class="driver-offer-value"><strong>${formatDriverMZN(Number(order.price || 0))}</strong><small>${escapeHtml(service)} · ${escapeHtml(getDriverPaymentLabel(order.payment_method))}</small></div>
+                <div class="driver-offer-route">
+                    <span><i class="fa-solid fa-box-open"></i><b>Recolha</b><small>${escapeHtml(pickup)}</small></span>
+                    <i class="fa-solid fa-arrow-down"></i>
+                    <span><i class="fa-solid fa-location-dot"></i><b>Entrega</b><small>${escapeHtml(delivery)}</small></span>
+                </div>
+                <footer>
+                    <button type="button" class="driver-offer-reject" data-offer-response="false" data-order-id="${escapeHtml(orderId)}"><i class="fa-solid fa-xmark"></i> Recusar</button>
+                    <button type="button" class="driver-offer-accept" data-offer-response="true" data-order-id="${escapeHtml(orderId)}"><i class="fa-solid fa-check"></i> Aceitar pedido</button>
+                </footer>
+            </article>`;
+    }).join('');
+
+    clearInterval(renderDriverOffers._timer);
+    if (offers.length) {
+        renderDriverOffers._timer = setInterval(() => {
+            let expired = false;
+            container.querySelectorAll('[data-offer-countdown]').forEach((node) => {
+                const seconds = Math.max(0, Math.ceil((Number(node.dataset.offerCountdown || 0) - Date.now()) / 1000));
+                node.textContent = `${seconds}s`;
+                if (seconds <= 0) expired = true;
+            });
+            if (expired) loadMyDeliveries();
+        }, 1000);
+    }
+}
+
+async function respondDriverOffer(orderId, accept, button) {
+    if (!orderId || !button) return;
+    const card = button.closest('.driver-offer-card');
+    card?.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+    const original = button.innerHTML;
+    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A enviar...';
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/offer-response`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accept })
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message || 'Não foi possível responder ao pedido.');
+        showCustomAlert(
+            accept ? 'Pedido aceite' : 'Pedido recusado',
+            accept ? 'A entrega foi adicionada à sua fila operacional.' : 'O cliente poderá escolher outro motorista.',
+            accept ? 'success' : 'info'
+        );
+        await loadMyDeliveries();
+    } catch (error) {
+        showCustomAlert('Pedido', error.message, 'error');
+        card?.querySelectorAll('button').forEach((item) => { item.disabled = false; });
+        button.innerHTML = original;
+    }
+}
+
 async function loadMyDeliveries() {
     const entregasContainer = document.getElementById('entregas-container');
     if (!entregasContainer) return;
@@ -274,17 +408,21 @@ async function loadMyDeliveries() {
             method: 'GET',
             headers: getAuthHeaders('driver')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
 
         const orders = Array.isArray(data.orders) ? data.orders : [];
+        const offers = Array.isArray(data.offers) ? data.offers : [];
+        renderDriverOffers(offers);
         entregasContainer.innerHTML = '';
 
         const subtitle = document.getElementById('driver-home-subtitle');
         if (subtitle) {
-            subtitle.textContent = orders.length
-                ? `${orders.length} entrega${orders.length > 1 ? 's' : ''}.`
-                : 'Livre para entregas.';
+            subtitle.textContent = offers.length
+                ? `${offers.length} novo${offers.length > 1 ? 's' : ''} pedido${offers.length > 1 ? 's' : ''} aguarda${offers.length > 1 ? 'm' : ''} a sua decisão.`
+                : orders.length
+                  ? `${orders.length} entrega${orders.length > 1 ? 's' : ''}.`
+                  : 'Livre para entregas.';
         }
 
         if (orders.length === 0) {
@@ -358,6 +496,18 @@ async function loadMyDeliveries() {
     }
 }
 
+document.addEventListener('click', (event) => {
+    const responseButton = event.target.closest('[data-offer-response]');
+    if (!responseButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    respondDriverOffer(
+        responseButton.dataset.orderId,
+        responseButton.dataset.offerResponse === 'true',
+        responseButton
+    );
+});
+
 
 async function loadMyEarnings(period = 'month') {
     const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
@@ -369,6 +519,10 @@ async function loadMyEarnings(period = 'month') {
     const titleEl = document.getElementById('driver-earnings-title');
     const tableTitleEl = document.getElementById('driver-earnings-table-title');
     const captionEl = document.getElementById('driver-earnings-summary-caption');
+    const periodLabelEl = document.getElementById('driver-period-label');
+    const averageEl = document.getElementById('driver-average-earning');
+    const nextCloseEl = document.getElementById('driver-next-close');
+    const payoutDateEl = document.getElementById('driver-payout-date');
 
     if (!totalGanhosEl || !totalOrdersEl || !commissionEl || !tableBody) return;
 
@@ -381,7 +535,8 @@ async function loadMyEarnings(period = 'month') {
     totalGanhosEl.innerText = '...';
     totalOrdersEl.innerText = '...';
     commissionEl.innerText = '... %';
-    tableBody.innerHTML = '<tr><td colspan="4">A carregar...</td></tr>';
+    if (averageEl) averageEl.innerText = '...';
+    tableBody.innerHTML = '<tr><td colspan="4"><span class="driver-table-loading"><i class="fas fa-spinner fa-spin"></i> A actualizar movimentos…</span></td></tr>';
 
     try {
         const response = await fetch(`${API_URL}/api/drivers/my-earnings?period=${encodeURIComponent(safePeriod)}`, {
@@ -393,28 +548,54 @@ async function loadMyEarnings(period = 'month') {
             return handleLogout('driver');
         }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
-        const periodLabel = data.period?.label || (safePeriod === 'day' ? 'Hoje' : safePeriod === 'week' ? 'Esta Semana' : 'Este Mês');
-        if (titleEl) titleEl.innerHTML = `<i class="fas fa-wallet"></i> Ganhos — ${escapeHtml(periodLabel)}`;
-        if (tableTitleEl) tableTitleEl.textContent = `Histórico — ${periodLabel}`;
+        const periodLabel = data.period?.label || (safePeriod === 'day' ? 'Hoje' : safePeriod === 'week' ? 'Esta semana' : 'Este mês');
+        if (titleEl) titleEl.textContent = 'Ganhos';
+        if (periodLabelEl) periodLabelEl.textContent = periodLabel;
+        if (tableTitleEl) tableTitleEl.textContent = 'Histórico de entregas';
         if (captionEl) captionEl.textContent = `Resumo de ${periodLabel.toLowerCase()}.`;
+
+        const endDate = new Date();
+        if (safePeriod === 'week') {
+            const daysUntilSunday = (7 - endDate.getDay()) % 7;
+            endDate.setDate(endDate.getDate() + daysUntilSunday);
+        } else if (safePeriod === 'month') {
+            endDate.setMonth(endDate.getMonth() + 1, 0);
+        }
+        const endDateLabel = endDate && !Number.isNaN(endDate.getTime())
+            ? endDate.toLocaleDateString('pt-MZ', { day: '2-digit', month: 'short' }).replace('.', '')
+            : 'Fim do período';
+        if (nextCloseEl) nextCloseEl.textContent = safePeriod === 'day' ? 'Hoje' : endDateLabel;
+        if (payoutDateEl) payoutDateEl.textContent = safePeriod === 'day' ? 'Após o fecho de hoje' : `Fecho a ${endDateLabel}`;
 
         const canViewEarnings = data.canViewEarnings !== false;
         if (!canViewEarnings) {
             totalGanhosEl.innerText = 'Restrito';
             totalOrdersEl.innerText = data.totalOrders || 0;
             commissionEl.innerText = 'Restrito';
+            if (averageEl) averageEl.innerText = 'Restrito';
         } else {
             totalGanhosEl.innerText = formatDriverMZN(data.totalGanhos);
             totalOrdersEl.innerText = data.totalOrders;
             commissionEl.innerText = `${data.commissionRate} %`;
+            if (averageEl) {
+                const average = Number(data.totalOrders) > 0 ? Number(data.totalGanhos || 0) / Number(data.totalOrders) : 0;
+                averageEl.innerText = formatDriverMZN(average);
+            }
+        }
+
+        window.TragoDriverEarningsData = { ...data, selectedPeriod: safePeriod };
+        renderDriverEarningsChart(Array.isArray(data.ordersList) ? data.ordersList : []);
+        const savedProfile = window.TragoDriverProfile?.read?.();
+        if (savedProfile && Number(data.totalOrders) > Number(savedProfile.total_deliveries || 0)) {
+            window.TragoDriverProfile?.render?.({ ...savedProfile, total_deliveries: Number(data.totalOrders) });
         }
 
         tableBody.innerHTML = '';
         if (!Array.isArray(data.ordersList) || data.ordersList.length === 0) {
             const periodText = data.period?.label || (safePeriod === 'day' ? 'hoje' : safePeriod === 'week' ? 'esta semana' : 'este mês');
-            tableBody.innerHTML = `<tr><td colspan="4">Sem entregas concluídas para ${escapeHtml(periodText)}.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="4"><span class="driver-table-empty"><i class="fa-regular fa-folder-open"></i><b>Sem movimentos</b><small>Ainda não existem entregas concluídas para ${escapeHtml(periodText)}.</small></span></td></tr>`;
             return;
         }
 
@@ -435,8 +616,56 @@ async function loadMyEarnings(period = 'month') {
 
     } catch (error) {
         console.error('Falha ao carregar ganhos:', error);
-        tableBody.innerHTML = '<tr><td colspan="4" class="table-error">Erro ao carregar. Tente novamente.</td></tr>';
+        totalGanhosEl.innerText = '—';
+        totalOrdersEl.innerText = '—';
+        commissionEl.innerText = '—';
+        if (averageEl) averageEl.innerText = '—';
+        renderDriverEarningsChart([]);
+        tableBody.innerHTML = '<tr><td colspan="4" class="table-error"><span class="driver-table-empty error"><i class="fa-solid fa-wifi"></i><b>Não foi possível actualizar</b><small>Verifique a ligação e use o botão Actualizar.</small></span></td></tr>';
     }
+}
+
+function renderDriverEarningsChart(orders = []) {
+    const chart = document.getElementById('driver-performance-chart');
+    if (!chart) return;
+    const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+    const values = Array(7).fill(0);
+    orders.forEach((order) => {
+        const date = new Date(order.timestamp_completed || order.updatedAt || order.updated_at || '');
+        if (Number.isNaN(date.getTime())) return;
+        values[(date.getDay() + 6) % 7] += 1;
+    });
+    const maxValue = Math.max(1, ...values);
+    chart.innerHTML = labels.map((label, index) => {
+        const height = values[index] ? Math.max(18, Math.round((values[index] / maxValue) * 100)) : 8;
+        return `<i style="--value:${height}%" title="${values[index]} entrega${values[index] === 1 ? '' : 's'}"><span>${values[index] || ''}</span><b>${label}</b></i>`;
+    }).join('');
+}
+
+function exportDriverEarnings() {
+    const data = window.TragoDriverEarningsData;
+    if (!data || !Array.isArray(data.ordersList)) {
+        showCustomAlert('Extrato indisponível', 'Actualize os ganhos antes de gerar o extrato.', 'warning');
+        return;
+    }
+    const rows = [['Data', 'Pedido', 'Valor do serviço (MZN)', 'Ganho do motorista (MZN)']];
+    data.ordersList.forEach((order) => {
+        const date = order.timestamp_completed ? new Date(order.timestamp_completed).toLocaleDateString('pt-MZ') : '';
+        rows.push([
+            date,
+            String(order._id || order.id || ''),
+            Number(order.price || 0).toFixed(2),
+            data.canViewEarnings === false ? 'Restrito' : Number(order.valor_motorista || 0).toFixed(2)
+        ]);
+    });
+    const csv = '\uFEFF' + rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = `trago-ganhos-${data.selectedPeriod || 'periodo'}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    URL.revokeObjectURL(link.href);
+    link.remove();
 }
 
 
@@ -592,12 +821,79 @@ function renderDriverQuickActions(order) {
         : '<p class="driver-quick-empty">Sem acções rápidas.</p>';
 }
 
+function renderDriverOrderMessages(messages = []) {
+    const stream = document.getElementById('driver-order-chat-stream');
+    if (!stream) return;
+    if (!messages.length) {
+        stream.innerHTML = '<div class="driver-chat-empty"><i class="fa-regular fa-comments"></i><strong>Sem mensagens</strong><span>Use esta conversa para coordenar a recolha e a entrega.</span></div>';
+        return;
+    }
+    stream.innerHTML = messages.map((message) => {
+        const role = message.senderRole || message.sender_role || 'system';
+        const date = new Date(message.createdAt || Date.now());
+        return `<article class="${role === 'driver' ? 'mine' : role === 'system' ? 'system' : ''}"><header><strong>${escapeHtml(message.senderName || message.sender_name || role)}</strong><small>${Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('pt-MZ', { hour: '2-digit', minute: '2-digit' })}</small></header><p>${escapeHtml(message.body || '')}</p></article>`;
+    }).join('');
+    stream.scrollTop = stream.scrollHeight;
+}
+
+function updateDriverRestaurantReady(status) {
+    const banner = document.getElementById('driver-restaurant-ready');
+    if (!banner) return;
+    banner.hidden = status !== 'ready';
+}
+
+async function loadDriverOrderMessages(orderId, silent = false) {
+    if (!orderId) return;
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/messages?channel=${encodeURIComponent(driverActiveChatChannel)}`, { headers: getAuthHeaders('driver') });
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message || 'Falha ao carregar a conversa.');
+        renderDriverOrderMessages(data.messages || []);
+    } catch (error) {
+        if (!silent) showCustomAlert('Comunicação', error.message, 'error');
+    }
+}
+
+async function sendDriverOrderMessage(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const message = String(form.elements.message.value || '').trim();
+    if (!message || !driverActiveOrderId) return;
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+        const response = await fetch(`${API_URL}/api/orders/${encodeURIComponent(driverActiveOrderId)}/messages`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, channel: driverActiveChatChannel })
+        });
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message || 'Falha ao enviar a mensagem.');
+        form.reset();
+        await loadDriverOrderMessages(driverActiveOrderId, true);
+    } catch (error) { showCustomAlert('Comunicação', error.message, 'error'); }
+    finally { button.disabled = false; }
+}
+
 function fillDetalheEntrega(order) {
     const detalheSection = document.getElementById('detalhe-entrega');
     if (!detalheSection) return;
 
     const orderId = String(order._id || order.id || '');
-    detalheSection.querySelector('#detalhe-entrega-title').innerText = `#${orderId.slice(-6)}`;
+    driverActiveOrderId = orderId;
+    updateDriverRestaurantReady(order.pickup_authorized_at || order.pickupAuthorizedAt ? 'ready' : '');
+    const restaurantParticipant = document.getElementById('driver-chat-restaurant-participant');
+    if (restaurantParticipant) restaurantParticipant.textContent = order.restaurant_id || order.restaurantId
+        ? 'Restaurante'
+        : 'Ponto de recolha';
+    loadDriverOrderMessages(orderId);
+    clearInterval(driverOrderChatTimer);
+    driverOrderChatTimer = setInterval(() => {
+        const detailVisible = !document.getElementById('detalhe-entrega')?.classList.contains('hidden');
+        if (detailVisible && driverActiveOrderId) loadDriverOrderMessages(driverActiveOrderId, true);
+    }, 8000);
+    detalheSection.dataset.orderId = orderId;
+    detalheSection.querySelector('#detalhe-entrega-title').innerText = `Pedido #${orderId.slice(-6)}`;
     const detailStatus = document.getElementById('driver-detail-status');
     if (detailStatus) {
         detailStatus.textContent = getDriverStatusLabel(order.status);
@@ -620,7 +916,9 @@ function fillDetalheEntrega(order) {
     document.getElementById('detalhe-cliente-telefone').innerHTML = `<strong>Tel.:</strong> ${escapeHtml(order.client_phone1 || '—')}`;
     document.getElementById('detalhe-pickup-contact').innerHTML = `<strong>Resp.:</strong> ${escapeHtml(order.pickup_contact_name || '—')}`;
     document.getElementById('detalhe-pickup-phone').innerHTML = `<strong>Contacto:</strong> ${escapeHtml(order.pickup_contact_phone || '—')}`;
-    document.getElementById('detalhe-pickup-notes').innerHTML = `<strong>Notas:</strong> ${escapeHtml(order.pickup_notes || 'Sem orientações adicionais')}`;
+    const clientNotes = order.client_notes || order.clientNotes || '';
+    const pickupNotes = order.pickup_notes || '';
+    document.getElementById('detalhe-pickup-notes').innerHTML = `<strong>Notas do cliente:</strong> ${escapeHtml(clientNotes || pickupNotes || 'Sem orientações adicionais')}${clientNotes && pickupNotes && clientNotes !== pickupNotes ? `<br><strong>Instruções de recolha:</strong> ${escapeHtml(pickupNotes)}` : ''}`;
     document.getElementById('detalhe-cliente-endereco').innerHTML = buildDriverRouteSummary(order);
     
     const paymentMap = {
@@ -635,7 +933,7 @@ function fillDetalheEntrega(order) {
 
     const paymentEl = document
         .getElementById('detalhe-payment-method')
-        ?.querySelector('span');
+        ?.querySelector(':scope > span');
     if (paymentEl) {
         paymentEl.textContent = paymentMap[order.payment_method] || order.payment_method || '—';
     }
@@ -746,7 +1044,7 @@ async function handleChangePasswordDriver(e) {
             headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
             body: JSON.stringify({ senhaAntiga, senhaNova })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) {
             throw new Error(data.message);
         }
@@ -777,7 +1075,7 @@ async function handleStartPickup(orderId) {
             method: 'POST',
             headers: getAuthHeaders('driver')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao iniciar recolha.');
         
         showCustomAlert('Sucesso', 'Recolha iniciada. Dirija-se ao ponto de recolha.', 'success');
@@ -806,7 +1104,7 @@ async function handleCompletePickup(orderId) {
             method: 'POST',
             headers: getAuthHeaders('driver')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao concluir recolha.');
         
         showCustomAlert('Sucesso', 'Recolha concluída. Pode iniciar a entrega.', 'success');
@@ -835,7 +1133,7 @@ async function handleStartDeliveryPhase(orderId) {
             method: 'POST',
             headers: getAuthHeaders('driver')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao iniciar entrega.');
         
         showCustomAlert('Sucesso', 'Entrega iniciada. Siga a rota até ao ponto de entrega.', 'success');
@@ -866,7 +1164,7 @@ function closePaymentConfirmationModal() {
     pendingPaymentConfirmation = null;
 }
 
-function openPaymentConfirmationModal({ orderId, verificationCode, preview, notes }) {
+function openPaymentConfirmationModal({ orderId, verificationCode, preview, notes, proofFile }) {
     const modal = document.getElementById('payment-confirmation-modal');
     const totalEl = document.getElementById('payment-confirmation-total');
     const messageEl = document.getElementById('payment-confirmation-message');
@@ -886,7 +1184,8 @@ function openPaymentConfirmationModal({ orderId, verificationCode, preview, note
         orderId,
         verificationCode,
         preview: { ...preview, requiresImmediatePayment },
-        notes
+        notes,
+        proofFile: proofFile || null
     };
 
     totalEl.textContent = `${amount} MZN`;
@@ -915,6 +1214,7 @@ async function handlePaymentPreview(event, orderId) {
     const submitButton = form.querySelector('button[type="submit"]');
     const verification_code = form.querySelector('#codigo-finalizacao').value.toUpperCase();
     const notes = form.querySelector('#driver-delivery-notes')?.value || '';
+    const proofFile = form.querySelector('#driver-delivery-proof')?.files?.[0] || null;
 
     if (verification_code.length < 5) {
         showCustomAlert('Erro', 'O código deve ter 5 caracteres.', 'error');
@@ -930,9 +1230,9 @@ async function handlePaymentPreview(event, orderId) {
             headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
             body: JSON.stringify({ verification_code })
         });
-        const preview = await response.json();
+        const preview = await readJsonResponse(response);
         if (!response.ok) throw new Error(preview.message || 'Falha ao validar código.');
-        openPaymentConfirmationModal({ orderId, verificationCode: verification_code, preview, notes });
+        openPaymentConfirmationModal({ orderId, verificationCode: verification_code, preview, notes, proofFile });
     } catch (error) {
         console.error('Falha ao validar pagamento:', error);
         showCustomAlert('Erro', error.message, 'error');
@@ -951,7 +1251,7 @@ function parsePaymentAmount(value) {
 
 async function submitPaymentConfirmation() {
     if (!pendingPaymentConfirmation) return;
-    const { orderId, verificationCode, preview, notes } = pendingPaymentConfirmation;
+    const { orderId, verificationCode, preview, notes, proofFile } = pendingPaymentConfirmation;
     const button = document.getElementById('btn-confirm-payment-finalize');
     const amountInput = document.getElementById('payment-confirmed-amount');
     const requiresImmediatePayment = preview.requiresImmediatePayment !== false;
@@ -986,16 +1286,31 @@ async function submitPaymentConfirmation() {
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A finalizar...';
 
     try {
+        let deliveryProofUrl = '';
+        if (proofFile) {
+            const upload = new FormData();
+            upload.append('file', proofFile);
+            upload.append('category', 'delivery-proof');
+            const uploadResponse = await fetch(`${API_URL}/api/media/upload`, {
+                method: 'POST',
+                headers: getAuthHeaders('driver'),
+                body: upload
+            });
+            const uploadData = await readJsonResponse(uploadResponse);
+            if (!uploadResponse.ok) throw new Error(uploadData.message || 'Falha ao carregar o comprovativo.');
+            deliveryProofUrl = uploadData.storage_ref || uploadData.url || '';
+        }
         const response = await fetch(`${API_URL}/api/orders/${orderId}/complete`, {
             method: 'POST',
             headers: { ...getAuthHeaders('driver'), 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 verification_code: verificationCode,
                 payment_amount_confirmed: amount,
-                driver_delivery_notes: notes
+                driver_delivery_notes: notes,
+                delivery_proof_url: deliveryProofUrl
             })
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao finalizar entrega.');
         closePaymentConfirmationModal();
         showCustomAlert('Sucesso', data.message || 'Entrega finalizada e pagamento confirmado!', 'success');
@@ -1016,7 +1331,7 @@ async function loadDriverProfileVisibility() {
     try {
         const response = await fetch(`${API_URL}/api/auth/me`, { headers: getAuthHeaders('driver') });
         if (!response.ok) return;
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         const type = data.profile?.driverType || data.profile?.driver_type;
         if (type === 'official') {
             const desktopBtn = document.getElementById('driver-earnings');
@@ -1038,7 +1353,7 @@ async function checkDriverPaymentPendingAlerts(force = false) {
     try {
         const response = await fetch(`${API_URL}/api/orders/payment-pending`, { headers: getAuthHeaders('driver') });
         if (!response.ok) return;
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         const total = Number(data.total || 0);
         const now = Date.now();
         if (total > 0 && (force || now - lastDriverPaymentAlertAt > 120000)) {

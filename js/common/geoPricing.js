@@ -90,7 +90,7 @@
       headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
       body: JSON.stringify({ origin, destination })
     });
-    const data = await response.json().catch(() => ({}));
+    const data = await readJsonResponse(response);
     if (!response.ok) throw new Error(data.message || 'Falha ao calcular distância.');
     return data;
   }
@@ -332,7 +332,7 @@
           url.searchParams.set('viewbox', '32.25,-25.70,32.85,-26.15');
 
           const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
-          const results = await response.json();
+          const results = await readJsonResponse(response);
           renderSuggestions(panel, input, kind, results);
         } catch (error) {
           console.warn('[TragoGeoPricing] Sugestões indisponíveis:', error.message || error);

@@ -122,7 +122,7 @@ function normalizeChartNumbers(values, expectedLength) {
  * Inicializa o gráfico de barras (Desempenho dos Serviços).
  * Versão refatorada com proteção contra chamadas concorrentes.
  */
-async function initServicesChart(reset = false) {
+async function initServicesChart() {
     // Previne chamadas concorrentes
     if (isServicesChartLoading) return;
     isServicesChartLoading = true;
@@ -141,24 +141,17 @@ async function initServicesChart(reset = false) {
     let adesaoValues = [0, 0, 0, 0, 0];
 
     try {
-        if (!reset) {
-            const response = await fetch(`${API_URL}/api/stats/services`, {
-                headers: getAuthHeaders('admin')
-            });
+        const response = await fetch(`${API_URL}/api/stats/services`, {
+            headers: getAuthHeaders('admin')
+        });
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message);
+        const data = await readJsonResponse(response);
+        if (!response.ok) throw new Error(data.message);
 
-            if (Array.isArray(data.labels) && data.labels.length > 0) {
-                labels = data.labels;
-                dataValues = normalizeChartNumbers(data.dataValues, labels.length);
-                adesaoValues = normalizeChartNumbers(data.adesaoValues, labels.length);
-            }
-        } else {
-            labels = ['Delivery Rápido', 'Doc.', 'Farmácia', 'Cargas', 'Outros'];
-            dataValues = [0, 0, 0, 0, 0];
-            adesaoValues = [0, 0, 0, 0, 0];
-            console.log('SIMULAÇÃO: Resetando dados do gráfico...');
+        if (Array.isArray(data.labels) && data.labels.length > 0) {
+            labels = data.labels;
+            dataValues = normalizeChartNumbers(data.dataValues, labels.length);
+            adesaoValues = normalizeChartNumbers(data.adesaoValues, labels.length);
         }
 
         const ctx = canvas.getContext('2d');

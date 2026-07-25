@@ -83,6 +83,10 @@ function attachEventListeners() {
         e.preventDefault();
         showPage('mapa-tempo-real', 'nav-mapa', 'Mapa em Tempo Real');
     });
+    document.getElementById('nav-support')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showPage('support-center', 'nav-support', 'Suporte Interno');
+    });
     document.getElementById('nav-config').addEventListener('click', (e) => {
         e.preventDefault();
         showPage('configuracoes', 'nav-config', 'Configurações');
@@ -129,14 +133,6 @@ function attachEventListeners() {
     });
 
     // --- Modais e Botões (Listeners) ---
-    const resetBtn = document.getElementById('btn-reset-chart');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', openChartResetModal);
-    }
-    document.getElementById('btn-confirm-chart-reset').addEventListener('click', handleChartReset);
-    document.getElementById('btn-close-chart-reset').addEventListener('click', closeChartResetModal);
-    document.getElementById('btn-cancel-chart-reset').addEventListener('click', closeChartResetModal);
-    
     document.getElementById('history-search-input').addEventListener('input', filterHistoryTable);
     const historyPeriodSelect = document.getElementById('history-period-select');
     if (historyPeriodSelect) {
@@ -320,7 +316,7 @@ function showPage(pageId, navId, title) {
         case 'visao-geral':
             loadOverviewStats();
             loadFinancialStats(document.getElementById('financial-period-select')?.value || 'month');
-            initServicesChart(false);
+            initServicesChart();
             break;
         case 'custos':
             loadCostsDashboardSummary();
@@ -342,6 +338,9 @@ function showPage(pageId, navId, title) {
             break;
         case 'mapa-tempo-real':
             initializeLiveMap();
+            break;
+        case 'support-center':
+            window.TragoSupport?.openHub?.('admin');
             break;
         case 'cargos':
             loadDrivers();
@@ -465,6 +464,7 @@ function setAdminMobileActive(pageId) {
         'cargos': 'more',
         'historico': 'more',
         'mapa-tempo-real': 'more',
+        'support-center': 'more',
         'configuracoes': 'more',
         'form-nova-entrega': 'new',
         'more': 'more'
@@ -498,7 +498,7 @@ function connectSocket() {
         if (page === 'visao-geral') {
             loadOverviewStats();
             if (includeFinancials) loadFinancialStats(document.getElementById('financial-period-select')?.value || 'month');
-            initServicesChart(false);
+            initServicesChart();
         }
     }
 
@@ -521,6 +521,17 @@ function connectSocket() {
             case 'delivery_started':
                 refreshOperationalViews();
                 break;
+
+            case 'order_message_created':
+            case 'restaurant_order_status_changed':
+            case 'order_status_changed': {
+                refreshOperationalViews({ includeHistory: true });
+                const modal = document.getElementById('history-detail-modal');
+                if (modal && !modal.classList.contains('hidden') && String(modal.dataset.orderId || '') === String(data.orderId || '')) {
+                    loadAdminOrderMessages(data.orderId);
+                }
+                break;
+            }
 
             case 'payment_confirmation_pending':
                 addAdminNotification({
@@ -566,7 +577,6 @@ function connectSocket() {
                 break;
 
             default:
-                console.log('[TragoRealtime] Evento admin recebido:', event, data);
         }
     }
 
@@ -671,7 +681,7 @@ async function checkAdminPaymentPendingAlerts(force = false) {
     try {
         const response = await fetch(`${API_URL}/api/orders/payment-pending`, { headers: getAuthHeaders('admin') });
         if (!response.ok) return;
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         const total = Number(data.total || 0);
         const now = Date.now();
         if (total > 0 && (force || now - lastAdminPaymentAlertAt > 120000)) {
@@ -747,8 +757,8 @@ async function refreshAdminNotifications() {
             headers: getAuthHeaders('admin')
         });
 
-        if (response.status === 401) return handleLogout('admin');
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao carregar notificações.');
 
         adminNotifications = Array.isArray(data.notifications) ? data.notifications : [];
@@ -778,7 +788,7 @@ async function markAdminNotificationAsRead(id) {
             method: 'POST',
             headers: getAuthHeaders('admin')
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao marcar notificação como lida.');
         await refreshAdminNotifications();
     } catch (error) {
@@ -800,7 +810,7 @@ async function markAllAdminNotificationsAsRead() {
             method: 'POST',
             headers: getAuthHeaders('admin')
         });
-        const data = await response.json().catch(() => ({}));
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao marcar notificações como lidas.');
         await refreshAdminNotifications();
     } catch (error) {
@@ -879,7 +889,7 @@ async function loadAdminProfile() {
             throw new Error('Sessão inválida');
         }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         const adminNameEl = document.getElementById('admin-name');
         if (adminNameEl) {
@@ -892,7 +902,7 @@ async function loadAdminProfile() {
 
     } catch (error) {
         console.error('Erro ao carregar perfil do admin:', error);
-        handleLogout('admin');
+        await handle401Safely('admin');
     }
 }
 

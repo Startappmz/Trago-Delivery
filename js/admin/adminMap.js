@@ -180,8 +180,10 @@ function initializeFormMap() {
 
     try {
         map = L.map('map').setView(maputoCoords, 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            maxZoom: 20,
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
         }).addTo(map);
 
         mapMarker = L.marker(maputoCoords, { draggable: true }).addTo(map);
@@ -250,11 +252,12 @@ function initializeLiveMap() {
 
         L.control.zoom({ position: 'bottomright' }).addTo(liveMap);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            maxZoom: 20,
             minZoom: 5,
             keepBuffer: 4,
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
         }).addTo(liveMap);
 
         setLiveMapSyncState('A ligar realtime...', 'loading');
@@ -308,10 +311,11 @@ async function fetchLiveDriverLocations() {
         });
 
         if (response.status === 401) {
-            return handleLogout('admin');
+            await handle401Safely('admin');
+            return;
         }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Erro ao carregar localizações.');
 
         (data.drivers || []).forEach(updateDriverMarker);

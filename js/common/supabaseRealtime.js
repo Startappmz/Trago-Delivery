@@ -62,7 +62,6 @@
                 }
             })
             .subscribe(function (status) {
-                console.log('[TragoRealtime] Admin channel:', status);
             });
 
         return {
@@ -99,7 +98,6 @@
                 }
             })
             .subscribe(function (status) {
-                console.log('[TragoRealtime] Driver channel:', status);
                 if (status === 'SUBSCRIBED') {
                     channel.track({ user_id: userId, online_at: new Date().toISOString() });
                     if (typeof onReady === 'function') onReady();
@@ -110,6 +108,48 @@
             client,
             channel,
             userId,
+            unsubscribe: function () {
+                return client.removeChannel(channel);
+            }
+        };
+    }
+
+    async function sha256Hex(value) {
+        if (!window.crypto?.subtle || typeof TextEncoder !== 'function') {
+            throw new Error('Este navegador não suporta o canal seguro de acompanhamento.');
+        }
+        const input = new TextEncoder().encode(String(value || ''));
+        const digest = await window.crypto.subtle.digest('SHA-256', input);
+        return Array.from(new Uint8Array(digest))
+            .map(function (byte) { return byte.toString(16).padStart(2, '0'); })
+            .join('');
+    }
+
+    async function connectOrderRealtime({ orderId, accessToken, onEvent, onReady } = {}) {
+        const safeOrderId = String(orderId || '').trim();
+        const safeAccessToken = String(accessToken || '').trim();
+        if (!safeOrderId || !safeAccessToken) return null;
+
+        const client = createClient();
+        if (!client) return null;
+
+        const tokenHash = await sha256Hex(safeAccessToken);
+        const channelName = `order:${safeOrderId}:${tokenHash}`;
+        const channel = client
+            .channel(channelName, { config: { broadcast: { self: false } } })
+            .on('broadcast', { event: '*' }, function (message) {
+                if (typeof onEvent === 'function') {
+                    onEvent(message.event, message.payload || {});
+                }
+            })
+            .subscribe(function (status) {
+                if (status === 'SUBSCRIBED' && typeof onReady === 'function') onReady();
+            });
+
+        return {
+            client,
+            channel,
+            orderId: safeOrderId,
             unsubscribe: function () {
                 return client.removeChannel(channel);
             }
@@ -128,16 +168,17 @@
         });
 
         if (!response.ok) {
-            const data = await response.json().catch(function () { return {}; });
+            const data = await readJsonResponse(response);
             throw new Error(data.message || 'Falha na comunicação Realtime.');
         }
 
-        return response.json().catch(function () { return {}; });
+        return readJsonResponse(response);
     }
 
     window.TragoRealtime = {
         connectAdminRealtime,
         connectDriverRealtime,
+        connectOrderRealtime,
         sendDriverLocation: function (token, payload) {
             return postRealtimeEndpoint(token, 'driver-location', payload);
         },

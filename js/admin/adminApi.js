@@ -44,12 +44,10 @@ async function loadOverviewStats() {
     try {
         const response = await fetch(`${API_URL}/api/stats/overview`, { headers: getAuthHeaders('admin') });
         if (response.status === 401) {
-            console.error('Token inválido ou expirado. A forçar logout.');
-            showCustomAlert('Sessão Expirada', 'A sua sessão é inválida ou expirou. Por favor, faça login novamente.', 'error');
-            setTimeout(() => handleLogout('admin'), 2500);
+            await handle401Safely('admin');
             return;
         }
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         document.getElementById('stats-pendentes').innerText = data.pendentes;
         document.getElementById('stats-em-transito').innerText = data.emTransito;
@@ -68,7 +66,7 @@ async function loadFinancialStats(period = 'month') {
     const safePeriod = ['day', 'week', 'month'].includes(period) ? period : 'month';
     try {
         const response = await fetch(`${API_URL}/api/stats/financials?period=${encodeURIComponent(safePeriod)}`, { headers: getAuthHeaders('admin') });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         const label = data.period?.label || periodLabels[safePeriod];
         const titleEl = document.getElementById('financial-section-title');
@@ -119,10 +117,11 @@ async function loadCostsDashboardSummary() {
         });
 
         if (response.status === 401) {
-            return handleLogout('admin');
+            await handle401Safely('admin');
+            return;
         }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
 
         const current = data.currentMonth || { totalCosts: 0, costsByCategory: {} };
@@ -289,15 +288,15 @@ async function loadCostAssignmentOptions() {
         const driversResp = await fetch(`${API_URL}/api/drivers`, {
             headers: getAuthHeaders('admin')
         });
-        if (driversResp.status === 401) return handleLogout('admin');
-        const driversData = await driversResp.json();
+        if (driversResp.status === 401) { await handle401Safely('admin'); return; }
+        const driversData = await readJsonResponse(driversResp);
 
         // Busca clientes
         const clientsResp = await fetch(`${API_URL}/api/clients`, {
             headers: getAuthHeaders('admin')
         });
-        if (clientsResp.status === 401) return handleLogout('admin');
-        const clientsData = await clientsResp.json();
+        if (clientsResp.status === 401) { await handle401Safely('admin'); return; }
+        const clientsData = await readJsonResponse(clientsResp);
 
         // Funcionários (motoristas)
         if (driversData.drivers && driversData.drivers.length > 0) {
@@ -318,7 +317,7 @@ async function loadCostAssignmentOptions() {
         try {
             const vehiclesResp = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
             if (vehiclesResp.ok) {
-                const vehiclesData = await vehiclesResp.json();
+                const vehiclesData = await readJsonResponse(vehiclesResp);
                 if (vehiclesData.vehicles && vehiclesData.vehicles.length > 0) {
                     const optGroupVehicles = document.createElement('optgroup');
                     optGroupVehicles.label = 'Veículos / Matrículas';
@@ -368,11 +367,9 @@ async function loadLatestCosts(tableBody, monthParam) {
             headers: getAuthHeaders('admin')
         });
 
-        if (response.status === 401) {
-            return handleLogout('admin');
-        }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
 
         const formatMZN = (value) =>
@@ -424,8 +421,8 @@ async function loadDrivers() {
     tableBody.innerHTML = '<tr><td colspan="6">A carregar...</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/drivers`, { method: 'GET', headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         tableBody.innerHTML = '';
         if (data.drivers.length === 0) {
@@ -464,8 +461,8 @@ async function loadActiveDeliveries() {
     tableBody.innerHTML = '<tr><td colspan="7">A carregar...</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/orders/active`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         tableBody.innerHTML = '';
         if (data.orders.length === 0) {
@@ -486,6 +483,7 @@ async function loadActiveDeliveries() {
             } else { // em_progresso
                 acaoBotao = 'Em Curso';
             }
+            acaoBotao += ` <button class="btn-action-small" onclick="openHistoryDetailModal('${order._id}')" title="Detalhes e conversa"><i class="fas fa-comments"></i></button>`;
 
             tableBody.innerHTML += `
                 <tr>
@@ -512,8 +510,8 @@ async function loadHistory() {
     tableBody.innerHTML = '<tr><td colspan="8">A carregar.</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/orders/history?period=${encodeURIComponent(period)}`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
 
         tableBody.innerHTML = '';
@@ -561,8 +559,8 @@ async function loadClients() {
     tableBody.innerHTML = '<tr><td colspan="6">A carregar...</td></tr>';
     try {
         const response = await fetch(`${API_URL}/api/clients`, { method: 'GET', headers: getAuthHeaders('admin') });
-        if (response.status === 401) { return handleLogout('admin'); }
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         tableBody.innerHTML = '';
         if (data.clients.length === 0) {
@@ -605,9 +603,10 @@ async function loadClientsIntoDropdown() {
         const response = await fetch(`${API_URL}/api/clients`, { headers: getAuthHeaders('admin') });
         if (response.status === 401) { 
             select.innerHTML = '<option value="">-- Erro de Sessão --</option>';
-            return handleLogout('admin');
+            await handle401Safely('admin');
+            return;
         }
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         clientCache = data.clients; // Preenche o cache global
         select.innerHTML = '<option value="">-- Selecione um cliente ou digite manualmente --</option>';
@@ -659,7 +658,7 @@ async function handleChangePassword(e) {
             body: JSON.stringify({ senhaAntiga, senhaNova })
         });
         
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) {
             throw new Error(data.message);
         }
@@ -739,7 +738,7 @@ async function handleAddCost(e) {
             body: JSON.stringify(body)
         });
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao registar custo.');
 
         showCustomAlert('Sucesso', 'Custo registado com sucesso!', 'success');
@@ -769,7 +768,7 @@ async function handleDeleteOldHistory() {
             headers: getAuthHeaders('admin')
         });
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) {
             throw new Error(data.message);
         }
@@ -801,11 +800,9 @@ async function handleExportCostsExcel() {
             headers: getAuthHeaders('admin')
         });
 
-        if (response.status === 401) {
-            return handleLogout('admin');
-        }
+        if (response.status === 401) { await handle401Safely('admin'); return; }
 
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Erro ao carregar custos.');
 
         const rows = [];
@@ -870,16 +867,12 @@ async function handleNewDelivery(e) {
     const paymentMethodEl = document.getElementById('payment-method');
     const paymentMethod = paymentMethodEl ? paymentMethodEl.value : 'cash';
 
-    // Log para debug - vais ver no console qual valor está a ser enviado
-    console.log('Método de pagamento selecionado:', paymentMethod);
-
     // Remove duplicados se existirem
     formData.delete('payment_method');
 
     // Adiciona valor correto
     formData.append('payment_method', paymentMethod);
     
-    const autoAssign = document.getElementById('autoAssignCheckbox').checked;
     const pickupLat = document.getElementById('pickup-lat')?.value;
     const pickupLng = document.getElementById('pickup-lng')?.value;
     const deliveryLat = document.getElementById('delivery-lat')?.value;
@@ -900,11 +893,6 @@ async function handleNewDelivery(e) {
     formData.delete('price');
     formData.append('price', Number(totalPrice || servicePrice || 0).toFixed(2));
 
-    if (autoAssign && (!deliveryLat || !deliveryLng)) {
-        showCustomAlert('Erro de Atribuição', 'A atribuição automática requer que um PIN seja definido no mapa.', 'error');
-        return;
-    }
-    
     submitButton.disabled = true;
     submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A gerar...';
 
@@ -920,7 +908,7 @@ async function handleNewDelivery(e) {
             body: formData
         });
         
-        const data = await response.json(); 
+        const data = await readJsonResponse(response); 
         if (!response.ok) {
             throw new Error(data.message || 'Erro do servidor');
         }
@@ -978,7 +966,7 @@ async function handleAddDriver(e) {
             })
         });
         
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         showCustomAlert('Sucesso', 'Motorista adicionado com sucesso!', 'success');
@@ -1022,7 +1010,7 @@ async function handleUpdateDriver(event) {
             body: JSON.stringify(updatedData)
         });
         
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         
         showCustomAlert('Sucesso', 'Motorista atualizado com sucesso!', 'success');
@@ -1067,7 +1055,7 @@ async function handleAddClient(e) {
             headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
             body: JSON.stringify(clientData)
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         showCustomAlert('Sucesso', 'Cliente adicionado com sucesso!', 'success');
         form.reset();
@@ -1113,7 +1101,7 @@ async function handleUpdateClient(e) {
             headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedData)
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         showCustomAlert('Sucesso', 'Cliente atualizado com sucesso!', 'success');
         closeEditClientModal();
@@ -1128,16 +1116,22 @@ async function handleUpdateClient(e) {
 }
 
 async function handleDeleteClient(clientId, clientName) {
-    // A confirmação é 'confirm', não um modal, por isso não há botão para desativar.
-    if (!confirm(`Tem a certeza que quer apagar o cliente "${clientName}"?\nEsta ação não pode ser revertida.`)) {
-        return;
-    }
+    const confirmed = window.TragoFeedback
+        ? await window.TragoFeedback.confirm({
+            type: 'warning',
+            title: 'Apagar cliente?',
+            message: `A conta de “${clientName}” será removida. Esta acção não pode ser revertida.`,
+            confirmText: 'Apagar cliente',
+            cancelText: 'Manter'
+        })
+        : false;
+    if (!confirmed) return;
     try {
         const response = await fetch(`${API_URL}/api/clients/${clientId}`, {
             method: 'DELETE',
             headers: getAuthHeaders('admin')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         showCustomAlert('Sucesso', data.message, 'success');
         loadClients();
@@ -1158,7 +1152,7 @@ async function confirmAssign(orderId, driverId) {
             headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ driverId }) 
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         showCustomAlert('Sucesso', 'Encomenda atribuída com sucesso!', 'success');
         closeAssignModal();
@@ -1169,31 +1163,6 @@ async function confirmAssign(orderId, driverId) {
     } finally {
         button.disabled = false;
         button.innerHTML = 'Confirmar';
-    }
-}
-
-function handleChartReset() {
-    // (Esta função é uma simulação, não faz chamada de API, mas adicionamos
-    // feedback ao botão de confirmação)
-    const password = document.getElementById('chart-reset-password').value;
-    const button = document.getElementById('btn-confirm-chart-reset');
-    
-    if (password === 'TragoDelivery.wipe') {
-        button.disabled = true;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> A resetar...';
-
-        console.log('SIMULAÇÃO: A chamar API para resetar estatísticas...');
-        
-        setTimeout(() => { // Simula a demora da API
-            showCustomAlert('Sucesso', 'As estatísticas foram resetadas! (Simulação)', 'success');
-            closeChartResetModal();
-            initServicesChart(true);
-            button.disabled = false;
-            button.innerHTML = 'Confirmar Reset';
-        }, 1000);
-
-    } else { 
-        showCustomAlert('Erro', 'Senha de reset incorreta.', 'error'); 
     }
 }
 
@@ -1219,7 +1188,7 @@ async function handleGenerateStatement() {
         const response = await fetch(`${API_URL}/api/clients/${clientId}/statement?startDate=${startDate}&endDate=${endDate}`, {
             headers: getAuthHeaders('admin')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message);
         // closeCustomAlert();
         populateStatementModal(data, startDate, endDate);
@@ -1244,8 +1213,8 @@ async function loadVehicles() {
     });
     try {
         const response = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
-        if (response.status === 401) return handleLogout('admin');
-        const data = await response.json();
+        if (response.status === 401) { await handle401Safely('admin'); return; }
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Erro ao carregar veículos.');
         const vehicles = data.vehicles || [];
         const html = !vehicles.length
@@ -1283,7 +1252,7 @@ async function loadVehiclesIntoSelects() {
     try {
         const response = await fetch(`${API_URL}/api/vehicles`, { headers: getAuthHeaders('admin') });
         if (!response.ok) return;
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         const vehicles = data.vehicles || [];
         selects.forEach(select => {
             const current = select.value;
@@ -1327,7 +1296,7 @@ async function handleAddVehicle(e) {
             headers: { ...getAuthHeaders('admin'), 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao adicionar veículo.');
         showCustomAlert('Sucesso', 'Veículo registado com sucesso!', 'success');
         form.reset();
@@ -1343,13 +1312,22 @@ async function handleAddVehicle(e) {
 }
 
 async function handleDeleteVehicle(vehicleId, plate) {
-    if (!confirm(`Tem a certeza que quer apagar o veículo "${plate}"?`)) return;
+    const confirmed = window.TragoFeedback
+        ? await window.TragoFeedback.confirm({
+            type: 'warning',
+            title: 'Apagar veículo?',
+            message: `O veículo “${plate}” deixará de estar disponível para atribuição.`,
+            confirmText: 'Apagar veículo',
+            cancelText: 'Manter'
+        })
+        : false;
+    if (!confirmed) return;
     try {
         const response = await fetch(`${API_URL}/api/vehicles/${vehicleId}`, {
             method: 'DELETE',
             headers: getAuthHeaders('admin')
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
         if (!response.ok) throw new Error(data.message || 'Falha ao apagar veículo.');
         showCustomAlert('Sucesso', data.message || 'Veículo apagado.', 'success');
         loadVehicles();
